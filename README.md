@@ -14,11 +14,11 @@ dashboard ("Migros Location Intelligence").
 Migros-Location-Optimizer/
 ├── app/
 │   └── app.py            # Streamlit dashboard (the deliverable)
-├── notebooks/            # Exploratory analysis by team members
-│   ├── 01_get_data_Varantorn.ipynb        # Supermarket scraping / data collection
-│   ├── 02_population_Alexandros.ipynb      # Geneva population processing
-│   ├── migros_project.ipynb                # Core analysis
-│   └── migros_project_extension.ipynb      # Extended analysis
+├── notebooks/            # Exploratory analysis
+│   ├── 01_data_collection.ipynb            # Supermarket data collection (OSM)
+│   ├── 02_population_analysis.ipynb        # Geneva population processing
+│   ├── 03_location_analysis.ipynb          # Core location analysis
+│   └── 04_location_analysis_extended.ipynb # Extended analysis
 ├── data/
 │   ├── geneva_supermarkets_data_with_address.csv
 │   ├── OCS_POPBATLOG_COMMUNE.csv           # Commune demographics (OCS, ; separated)
