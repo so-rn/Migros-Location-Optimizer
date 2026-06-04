@@ -1,0 +1,25 @@
+# OSMnx / requests cache (regenerated automatically)
+cache/
+**/cache/
+
+# Jupyter
+.ipynb_checkpoints/
+Untitled*.ipynb
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code session artifacts
+.claude/

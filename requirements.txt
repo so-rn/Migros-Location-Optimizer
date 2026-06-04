@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+geopandas
+osmnx
+statsmodels
+folium
+streamlit-folium
+matplotlib
+seaborn
