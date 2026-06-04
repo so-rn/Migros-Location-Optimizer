@@ -12,8 +12,8 @@ dashboard ("Migros Location Intelligence").
 
 ```
 Migros-Location-Optimizer/
-├── final_app/
-│   └── app1.py           # Streamlit dashboard (the deliverable)
+├── app/
+│   └── app.py            # Streamlit dashboard (the deliverable)
 ├── notebooks/            # Exploratory analysis
 │   ├── 01_data_collection.ipynb            # Supermarket data collection (OSM)
 │   ├── 02_population_analysis.ipynb        # Geneva population processing
@@ -42,7 +42,7 @@ Migros-Location-Optimizer/
 Commune boundaries are fetched live from OpenStreetMap via **OSMnx**
 (`Canton of Geneva, Switzerland`, `admin_level=8`).
 
-> **Note:** `final_app/app1.py` loads the CSVs from this repo's `data/` folder over GitHub raw
+> **Note:** `app/app.py` loads the CSVs from this repo's `data/` folder over GitHub raw
 > URLs, so the dashboard runs without the files being present locally — but the files
 > must stay committed to the repo for the deployed app to work.
 
@@ -53,7 +53,7 @@ Commune boundaries are fetched live from OpenStreetMap via **OSMnx**
 pip install -r requirements.txt
 
 # 2. launch the dashboard
-streamlit run final_app/app1.py
+streamlit run app/app.py
 ```
 
 On Debian/Ubuntu (or Streamlit Cloud) the system packages in `packages.txt`
