@@ -8,6 +8,10 @@ demographics, and a purchasing-power proxy — to score and rank communes by the
 attractiveness for a new store, and presents the result in an interactive Streamlit
 dashboard ("Migros Location Intelligence").
 
+The dashboard walks through a 3-stage funnel — population shortlist, socio-economic
+composite scoring, and an OLS opportunity-gap model — to surface a single recommended
+expansion target for the canton.
+
 ## Project structure
 
 ```
