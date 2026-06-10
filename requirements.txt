@@ -4,6 +4,9 @@ numpy
 geopandas
 osmnx
 statsmodels
+scikit-learn
+scipy
+shapely
 folium
 streamlit-folium
 matplotlib
