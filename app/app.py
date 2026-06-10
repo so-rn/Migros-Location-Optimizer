@@ -21,240 +21,262 @@ st.set_page_config(
 )
 
 # ─── BRAND PALETTE ─────────────────────────────────────────────
-MIGROS_ORANGE = '#FF6600'
-MIGROS_TEAL   = '#0077B6'
-BG_DARK       = '#0A0E17'
-CARD_BG       = '#111827'
-CARD_GLASS    = 'rgba(17,24,39,0.7)'
-TEXT_LIGHT    = '#F0F6FC'
-TEXT_MUTED    = '#7D8DA1'
-BORDER        = '#1E2D3D'
-GLOW          = 'rgba(255,102,0,0.18)'
+MIGROS_ORANGE = '#FF6B00'
+ORANGE_LIGHT  = '#FF8A3D'
+MIGROS_TEAL   = '#4FB3E8'
+BG_DARK       = '#0B0F19'
+CARD_BG       = '#121826'
+TEXT_LIGHT    = '#EDF1F7'
+TEXT_MUTED    = '#94A3B8'
+BORDER        = '#1E293B'
 
 # ─── GLOBAL CSS ────────────────────────────────────────────────
 st.markdown(f"""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Unbounded:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
+  /* ── Base ──────────────────────────────────────────────── */
   html, body, [class*="css"] {{
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     background-color: {BG_DARK};
     color: {TEXT_LIGHT};
+    -webkit-font-smoothing: antialiased;
   }}
   .stApp {{
-    background: radial-gradient(ellipse at 20% 10%, rgba(255,102,0,0.07) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(0,119,182,0.06) 0%, transparent 50%),
+    background: radial-gradient(ellipse 80% 50% at 15% 0%, rgba(255,107,0,0.05) 0%, transparent 60%),
+                radial-gradient(ellipse 70% 50% at 90% 100%, rgba(79,179,232,0.04) 0%, transparent 60%),
                 {BG_DARK};
   }}
+  .block-container {{ padding-top: 1.4rem; padding-bottom: 3rem; max-width: 1380px; }}
+
+  /* Hide default Streamlit chrome */
+  #MainMenu, footer {{ visibility: hidden; }}
+  header[data-testid="stHeader"] {{ background: transparent; }}
 
   /* Scrollbar */
-  ::-webkit-scrollbar {{ width: 4px; height: 4px; }}
-  ::-webkit-scrollbar-track {{ background: {BG_DARK}; }}
-  ::-webkit-scrollbar-thumb {{ background: {MIGROS_ORANGE}; border-radius: 4px; }}
+  ::-webkit-scrollbar {{ width: 5px; height: 5px; }}
+  ::-webkit-scrollbar-track {{ background: transparent; }}
+  ::-webkit-scrollbar-thumb {{ background: #2A3648; border-radius: 4px; }}
+  ::-webkit-scrollbar-thumb:hover {{ background: {MIGROS_ORANGE}; }}
 
-  /* Sidebar */
+  /* ── Sidebar ───────────────────────────────────────────── */
   [data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, #080c14 0%, #0d1624 100%);
+    background: #0D121D;
     border-right: 1px solid {BORDER};
   }}
-  [data-testid="stSidebar"] * {{ color: {TEXT_LIGHT} !important; }}
+  [data-testid="stSidebar"] * {{ color: {TEXT_LIGHT}; }}
 
-  /* Top header bar */
+  /* Sidebar nav: radio styled as menu pills */
+  [data-testid="stSidebar"] [role="radiogroup"] {{ gap: 2px; }}
+  [data-testid="stSidebar"] [role="radiogroup"] label {{
+    width: 100%;
+    padding: 9px 14px !important;
+    margin: 0 !important;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    font-size: 13.5px;
+  }}
+  [data-testid="stSidebar"] [role="radiogroup"] label:hover {{
+    background: rgba(255,255,255,0.04);
+  }}
+  [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
+    background: rgba(255,107,0,0.10);
+    border-color: rgba(255,107,0,0.35);
+  }}
+  [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{
+    color: {ORANGE_LIGHT} !important;
+    font-weight: 600;
+  }}
+  /* Hide the radio dot so it reads as a nav menu */
+  [data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {{ display: none; }}
+  [data-testid="stSidebar"] .stRadio > label {{
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 10px !important;
+    letter-spacing: 2.5px !important;
+    color: {TEXT_MUTED} !important;
+    text-transform: uppercase !important;
+    margin-bottom: 6px;
+  }}
+
+  /* ── Top header bar ────────────────────────────────────── */
   .top-bar {{
-    background: linear-gradient(90deg, rgba(10,14,23,0.95) 0%, rgba(26,8,0,0.85) 50%, rgba(10,14,23,0.95) 100%);
-    border-bottom: 1px solid rgba(255,102,0,0.4);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    padding: 20px 36px;
+    background: linear-gradient(135deg, #121826 0%, #151C2C 60%, #18202F 100%);
+    border: 1px solid {BORDER};
+    padding: 20px 28px;
     display: flex;
     align-items: center;
-    gap: 20px;
-    margin-bottom: 36px;
-    border-radius: 0 0 20px 20px;
-    box-shadow: 0 4px 40px rgba(255,102,0,0.12);
+    gap: 18px;
+    margin-bottom: 32px;
+    border-radius: 16px;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
   }}
   .top-bar::before {{
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, {MIGROS_ORANGE}, transparent);
-    opacity: 0.6;
+    height: 2px;
+    background: linear-gradient(90deg, {MIGROS_ORANGE}, {ORANGE_LIGHT} 30%, transparent 70%);
   }}
   .top-bar .logo {{
-    background: {MIGROS_ORANGE};
+    background: linear-gradient(135deg, {MIGROS_ORANGE}, #E55A00);
     color: white;
-    font-family: 'Unbounded', sans-serif;
-    font-weight: 900;
+    font-family: 'Sora', sans-serif;
+    font-weight: 800;
     font-size: 20px;
-    padding: 10px 16px;
+    padding: 10px 17px;
     border-radius: 12px;
-    letter-spacing: 1px;
-    box-shadow: 0 0 30px rgba(255,102,0,0.5), 0 0 60px rgba(255,102,0,0.2);
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 18px rgba(255,107,0,0.35);
   }}
   .top-bar .title {{
-    font-family: 'Unbounded', sans-serif;
-    font-size: 17px;
+    font-family: 'Sora', sans-serif;
+    font-size: 18px;
     font-weight: 700;
     color: {TEXT_LIGHT};
-    letter-spacing: 0.5px;
+    letter-spacing: 0.2px;
   }}
   .top-bar .subtitle {{
-    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
     color: {TEXT_MUTED};
-    font-family: 'Space Mono', monospace;
-    margin-top: 3px;
+    margin-top: 4px;
+    letter-spacing: 0.8px;
   }}
   .top-bar .live-dot {{
-    width: 8px; height: 8px;
-    background: #22c55e;
+    width: 7px; height: 7px;
+    background: #34D399;
     border-radius: 50%;
-    box-shadow: 0 0 10px #22c55e;
     display: inline-block;
-    margin-right: 6px;
-    animation: pulse 2s infinite;
+    margin-right: 7px;
+    animation: pulse 2.4s ease-in-out infinite;
   }}
   @keyframes pulse {{
-    0%, 100% {{ opacity: 1; transform: scale(1); }}
-    50% {{ opacity: 0.5; transform: scale(1.3); }}
+    0%, 100% {{ opacity: 1; }}
+    50% {{ opacity: 0.35; }}
   }}
 
-  /* KPI cards */
-  .kpi-grid {{ display: flex; gap: 14px; flex-wrap: wrap; margin: 20px 0 28px; }}
+  /* ── KPI cards ─────────────────────────────────────────── */
+  .kpi-grid {{ display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 28px; }}
   .kpi-card {{
-    background: {CARD_GLASS};
+    background: {CARD_BG};
     border: 1px solid {BORDER};
-    border-radius: 16px;
-    padding: 20px 24px;
-    min-width: 140px;
+    border-radius: 14px;
+    padding: 20px 22px;
+    min-width: 150px;
     flex: 1;
     position: relative;
     overflow: hidden;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
     cursor: default;
   }}
   .kpi-card:hover {{
-    transform: translateY(-3px);
-    box-shadow: 0 12px 40px rgba(255,102,0,0.15);
-    border-color: rgba(255,102,0,0.4);
+    transform: translateY(-2px);
+    border-color: rgba(255,107,0,0.45);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
   }}
-  .kpi-card::before {{
+  .kpi-card .kpi-label {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: {TEXT_MUTED};
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }}
+  .kpi-card .kpi-value {{
+    font-family: 'Sora', sans-serif;
+    font-size: 30px;
+    font-weight: 700;
+    color: {TEXT_LIGHT};
+    line-height: 1.1;
+  }}
+  .kpi-card .kpi-accent {{ color: {MIGROS_ORANGE}; }}
+  .kpi-card .kpi-sub {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    color: {TEXT_MUTED};
+    margin-top: 7px;
+    letter-spacing: 1px;
+  }}
+
+  /* ── Section headings ──────────────────────────────────── */
+  .stage-badge {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,107,0,0.10);
+    color: {ORANGE_LIGHT};
+    border: 1px solid rgba(255,107,0,0.30);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 13px;
+    border-radius: 20px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+  }}
+  .section-title {{
+    font-family: 'Sora', sans-serif;
+    font-size: 23px;
+    font-weight: 700;
+    color: {TEXT_LIGHT};
+    margin-bottom: 6px;
+    line-height: 1.3;
+    letter-spacing: -0.2px;
+  }}
+  .section-sub {{
+    font-size: 13.5px;
+    color: {TEXT_MUTED};
+    margin-bottom: 26px;
+    line-height: 1.5;
+  }}
+
+  /* ── Champion card ─────────────────────────────────────── */
+  .champion-card {{
+    background: linear-gradient(160deg, #1A1208 0%, #16110C 45%, {CARD_BG} 100%);
+    border: 1px solid rgba(255,107,0,0.40);
+    border-radius: 18px;
+    padding: 40px 36px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+    margin: 28px 0;
+    position: relative;
+    overflow: hidden;
+  }}
+  .champion-card::before {{
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 2px;
     background: linear-gradient(90deg, transparent, {MIGROS_ORANGE}, transparent);
   }}
-  .kpi-card .kpi-label {{
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    color: {TEXT_MUTED};
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-  }}
-  .kpi-card .kpi-value {{
-    font-family: 'Unbounded', sans-serif;
-    font-size: 28px;
-    font-weight: 700;
-    color: {TEXT_LIGHT};
-  }}
-  .kpi-card .kpi-accent {{ color: {MIGROS_ORANGE}; }}
-  .kpi-card .kpi-sub {{
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    color: {TEXT_MUTED};
-    margin-top: 4px;
-    letter-spacing: 0.5px;
-  }}
-
-  /* Stage badge */
-  .stage-badge {{
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,102,0,0.12);
-    color: {MIGROS_ORANGE};
-    border: 1px solid rgba(255,102,0,0.3);
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    font-weight: 700;
-    padding: 4px 12px;
-    border-radius: 20px;
-    letter-spacing: 2px;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-  }}
-  .section-title {{
-    font-family: 'Unbounded', sans-serif;
-    font-size: 21px;
-    font-weight: 700;
-    color: {TEXT_LIGHT};
-    margin-bottom: 4px;
-    line-height: 1.3;
-  }}
-  .section-sub {{
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    color: {TEXT_MUTED};
-    margin-bottom: 24px;
-    letter-spacing: 0.3px;
-  }}
-
-  /* Champion card */
-  .champion-card {{
-    background: linear-gradient(135deg,rgba(26,8,0,0.9),rgba(42,18,0,0.85),rgba(26,8,0,0.9));
-    border: 1px solid rgba(255,102,0,0.5);
-    border-radius: 20px;
-    padding: 36px;
-    text-align: center;
-    box-shadow: 0 0 80px rgba(255,102,0,0.2), inset 0 0 80px rgba(255,102,0,0.03);
-    margin: 28px 0;
-    position: relative;
-    overflow: hidden;
-    backdrop-filter: blur(20px);
-  }}
-  .champion-card::before {{
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, {MIGROS_ORANGE}, transparent);
-  }}
-  .champion-card::after {{
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,102,0,0.4), transparent);
-  }}
   .champion-label {{
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    color: {MIGROS_ORANGE};
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: {ORANGE_LIGHT};
     font-weight: 700;
     letter-spacing: 4px;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
     text-transform: uppercase;
   }}
   .champion-name {{
-    font-family: 'Unbounded', sans-serif;
-    font-size: 40px;
-    font-weight: 900;
+    font-family: 'Sora', sans-serif;
+    font-size: 42px;
+    font-weight: 800;
     color: white;
-    margin-bottom: 6px;
-    text-shadow: 0 0 40px rgba(255,102,0,0.4);
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
   }}
   .champion-loc {{
-    font-size: 12px;
+    font-size: 13px;
     color: {TEXT_MUTED};
-    margin-bottom: 32px;
-    font-family: 'Space Mono', monospace;
-    letter-spacing: 1px;
+    margin-bottom: 30px;
+    letter-spacing: 0.4px;
   }}
   .champion-stats {{
     display: flex;
@@ -263,190 +285,159 @@ st.markdown(f"""
     flex-wrap: wrap;
   }}
   .champion-stat {{
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
     border-radius: 12px;
     padding: 14px 20px;
-    min-width: 110px;
-    transition: background 0.2s, border-color 0.2s;
+    min-width: 116px;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
   }}
   .champion-stat:hover {{
-    background: rgba(255,102,0,0.08);
-    border-color: rgba(255,102,0,0.3);
+    background: rgba(255,107,0,0.07);
+    border-color: rgba(255,107,0,0.30);
+    transform: translateY(-2px);
   }}
   .champion-stat-label {{
-    font-family: 'Space Mono', monospace;
-    font-size: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
     color: {TEXT_MUTED};
-    letter-spacing: 1.5px;
+    letter-spacing: 1.6px;
     margin-bottom: 8px;
     text-transform: uppercase;
   }}
   .champion-stat-value {{
-    font-family: 'Unbounded', sans-serif;
+    font-family: 'Sora', sans-serif;
     font-size: 19px;
     font-weight: 700;
   }}
 
-  /* Funnel viz */
+  /* ── Funnel viz ────────────────────────────────────────── */
   .funnel-step {{
-    background: {CARD_GLASS};
+    background: {CARD_BG};
     border: 1px solid {BORDER};
     border-left: 3px solid {MIGROS_ORANGE};
     border-radius: 12px;
-    padding: 18px 22px;
+    padding: 18px 24px;
     margin-bottom: 10px;
     display: flex;
     align-items: center;
-    gap: 18px;
-    backdrop-filter: blur(10px);
-    transition: transform 0.2s, box-shadow 0.2s;
+    gap: 20px;
+    transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
   }}
   .funnel-step:hover {{
-    transform: translateX(4px);
-    box-shadow: -4px 0 20px rgba(255,102,0,0.15);
+    transform: translateX(5px);
+    border-color: rgba(255,107,0,0.35);
+    box-shadow: 0 6px 22px rgba(0,0,0,0.30);
   }}
   .funnel-num {{
-    font-family: 'Unbounded', monospace;
-    font-size: 26px;
+    font-family: 'Sora', sans-serif;
+    font-size: 25px;
     font-weight: 700;
     color: {MIGROS_ORANGE};
     min-width: 64px;
-    text-shadow: 0 0 20px rgba(255,102,0,0.4);
+  }}
+  .funnel-title {{
+    font-family: 'Sora', sans-serif;
+    font-weight: 600;
+    font-size: 14.5px;
+  }}
+  .funnel-sub {{
+    font-size: 12px;
+    color: {TEXT_MUTED};
+    margin-top: 4px;
+    line-height: 1.4;
   }}
 
-  /* Table */
-  .intel-table {{ width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; font-size: 11px; }}
+  /* ── Table ─────────────────────────────────────────────── */
+  .intel-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
   .intel-table th {{
-    background: rgba(255,102,0,0.06);
+    background: rgba(255,255,255,0.02);
     padding: 11px 16px;
     text-align: left;
     color: {TEXT_MUTED};
-    font-size: 9px;
-    letter-spacing: 1.5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 1.6px;
     text-transform: uppercase;
-    border-bottom: 1px solid rgba(255,102,0,0.25);
+    border-bottom: 1px solid rgba(255,107,0,0.25);
   }}
-  .intel-table td {{ padding: 10px 16px; border-bottom: 1px solid {BORDER}; color: {TEXT_LIGHT}; font-family: 'DM Sans', sans-serif; font-size: 13px; }}
-  .intel-table tr:nth-child(even) td {{ background: rgba(255,255,255,0.015); }}
-  .intel-table tr:hover td {{ background: rgba(255,102,0,0.05); transition: background 0.15s; }}
-
-  /* Glass button */
-  .glass-btn {{
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(255,102,0,0.1);
-    border: 1px solid rgba(255,102,0,0.35);
-    color: {MIGROS_ORANGE};
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    text-transform: uppercase;
-    transition: all 0.2s;
-    backdrop-filter: blur(10px);
+  .intel-table td {{
+    padding: 11px 16px;
+    border-bottom: 1px solid {BORDER};
+    color: {TEXT_LIGHT};
+    font-size: 13.5px;
   }}
-  .glass-btn:hover {{
-    background: rgba(255,102,0,0.2);
-    border-color: {MIGROS_ORANGE};
-    box-shadow: 0 0 20px rgba(255,102,0,0.25);
-    transform: translateY(-1px);
-  }}
+  .intel-table tr:last-child td {{ border-bottom: none; }}
+  .intel-table tr:hover td {{ background: rgba(255,107,0,0.045); transition: background 0.15s; }}
 
-  /* Matplotlib dark bg */
-  .stPlotlyChart, .stPyplot {{ border-radius: 14px; overflow: hidden; }}
-
-  /* Streamlit widgets — glass buttons */
+  /* ── Buttons ───────────────────────────────────────────── */
   .stButton > button {{
-    background: rgba(255,102,0,0.1) !important;
-    color: {MIGROS_ORANGE} !important;
-    font-family: 'Space Mono', monospace !important;
-    font-weight: 700 !important;
-    border: 1px solid rgba(255,102,0,0.4) !important;
+    background: linear-gradient(135deg, {MIGROS_ORANGE}, #E55A00) !important;
+    color: white !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    border: none !important;
     border-radius: 10px !important;
-    padding: 10px 24px !important;
-    letter-spacing: 1.5px !important;
-    font-size: 10px !important;
-    text-transform: uppercase !important;
-    transition: all 0.2s !important;
-    backdrop-filter: blur(10px) !important;
+    padding: 10px 26px !important;
+    letter-spacing: 0.4px !important;
+    font-size: 13px !important;
+    transition: all 0.18s !important;
+    box-shadow: 0 4px 14px rgba(255,107,0,0.25) !important;
   }}
   .stButton > button:hover {{
-    background: rgba(255,102,0,0.22) !important;
-    border-color: {MIGROS_ORANGE} !important;
-    box-shadow: 0 0 24px rgba(255,102,0,0.3) !important;
-    transform: translateY(-2px) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(255,107,0,0.40) !important;
   }}
 
-  /* Selectbox / slider */
-  div[data-testid="stSelectbox"] > div > div {{
-    background: {CARD_GLASS} !important;
+  /* ── Inputs ────────────────────────────────────────────── */
+  div[data-testid="stSelectbox"] > div > div,
+  div[data-testid="stMultiSelect"] > div > div {{
+    background: {CARD_BG} !important;
     border: 1px solid {BORDER} !important;
     border-radius: 10px !important;
     color: {TEXT_LIGHT} !important;
-    backdrop-filter: blur(10px) !important;
   }}
-  .stSlider [data-testid="stSlider"] {{
-    accent-color: {MIGROS_ORANGE};
-  }}
-
   div[data-testid="stMetric"] {{
-    background: {CARD_GLASS};
+    background: {CARD_BG};
     border: 1px solid {BORDER};
     border-radius: 14px;
     padding: 16px 20px;
-    backdrop-filter: blur(10px);
   }}
-  label, .stSelectbox label, .stSlider label, .stMultiSelect label {{
+  label, .stSelectbox label, .stSlider label, .stMultiSelect label, .stCheckbox label p {{
     color: {TEXT_MUTED} !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 1.5px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+  }}
+  .stSelectbox > label p, .stSlider > label p, .stMultiSelect > label p {{
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 10px !important;
+    letter-spacing: 1.6px !important;
     text-transform: uppercase !important;
   }}
 
   div[data-testid="stExpander"] {{
-    background: {CARD_GLASS};
+    background: {CARD_BG};
     border: 1px solid {BORDER};
     border-radius: 12px;
-    backdrop-filter: blur(10px);
   }}
 
-  /* Filter panel */
+  /* ── Filter panel ──────────────────────────────────────── */
   .filter-panel {{
-    background: {CARD_GLASS};
+    background: {CARD_BG};
     border: 1px solid {BORDER};
-    border-radius: 16px;
-    padding: 20px 24px;
-    margin-bottom: 24px;
-    backdrop-filter: blur(12px);
+    border-radius: 14px;
+    padding: 20px 24px 8px;
+    margin-bottom: 22px;
   }}
   .filter-title {{
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
     color: {TEXT_MUTED};
-    letter-spacing: 2px;
+    letter-spacing: 2.2px;
     text-transform: uppercase;
-    margin-bottom: 14px;
-  }}
-
-  /* Sidebar radio */
-  [data-testid="stSidebar"] .stRadio > label {{
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-    color: {TEXT_MUTED} !important;
-    text-transform: uppercase !important;
-  }}
-
-  /* Sidebar nav items */
-  [data-testid="stSidebar"] div[data-testid="stRadio"] label {{
-    padding: 8px 0 !important;
-    cursor: pointer !important;
+    margin-bottom: 12px;
   }}
 
   /* Horizontal divider */
@@ -457,30 +448,35 @@ st.markdown(f"""
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.03);
     border: 1px solid {BORDER};
     border-radius: 20px;
-    padding: 3px 10px;
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
+    padding: 4px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
     color: {TEXT_MUTED};
     margin-right: 6px;
     letter-spacing: 0.5px;
   }}
+
+  /* Charts */
+  .stPlotlyChart, .stPyplot, [data-testid="stImage"] {{ border-radius: 14px; overflow: hidden; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ─── MATPLOTLIB STYLE ──────────────────────────────────────────
 sns.set_theme(style='darkgrid')
 plt.rcParams.update({
-    'figure.facecolor': BG_DARK, 'axes.facecolor': '#0d1624',
+    'figure.facecolor': BG_DARK, 'axes.facecolor': '#101522',
     'axes.edgecolor': BORDER, 'axes.labelcolor': TEXT_LIGHT,
     'xtick.color': TEXT_MUTED, 'ytick.color': TEXT_MUTED,
-    'text.color': TEXT_LIGHT, 'grid.color': '#1a2535',
-    'grid.linewidth': 0.5, 'font.family': 'DejaVu Sans',
+    'text.color': TEXT_LIGHT, 'grid.color': '#1B2433',
+    'grid.linewidth': 0.6, 'font.family': 'DejaVu Sans',
     'axes.titlecolor': TEXT_LIGHT, 'axes.titleweight': 'bold',
-    'axes.titlesize': 13, 'legend.facecolor': CARD_BG,
-    'legend.edgecolor': BORDER, 'legend.labelcolor': TEXT_LIGHT,
+    'axes.titlesize': 13, 'axes.titlepad': 14,
+    'axes.spines.top': False, 'axes.spines.right': False,
+    'legend.facecolor': CARD_BG, 'legend.edgecolor': BORDER,
+    'legend.labelcolor': TEXT_LIGHT, 'legend.framealpha': 0.9,
 })
 
 # ─── DATA LOADING (CACHED) ─────────────────────────────────────
@@ -581,18 +577,18 @@ def run_pipeline(_df_clean):
 # ─── SIDEBAR ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
-    <div style="padding:24px 12px 12px;">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-        <div style="background:{MIGROS_ORANGE};color:white;font-family:'Unbounded',sans-serif;
-             font-weight:900;font-size:16px;padding:9px 14px;border-radius:10px;letter-spacing:1px;
-             box-shadow:0 0 24px rgba(255,102,0,0.45);">M</div>
+    <div style="padding:20px 8px 8px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+        <div style="background:linear-gradient(135deg,{MIGROS_ORANGE},#E55A00);color:white;font-family:'Sora',sans-serif;
+             font-weight:800;font-size:16px;padding:9px 14px;border-radius:11px;letter-spacing:0.5px;
+             box-shadow:0 4px 16px rgba(255,107,0,0.30);">M</div>
         <div>
-          <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:700;color:{TEXT_LIGHT};line-height:1.4;">Location<br>Intelligence</div>
-          <div style="font-family:'Space Mono',monospace;font-size:9px;color:{TEXT_MUTED};margin-top:3px;letter-spacing:1px;">GENEVA · CH</div>
+          <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:{TEXT_LIGHT};line-height:1.35;">Location<br>Intelligence</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:{TEXT_MUTED};margin-top:4px;letter-spacing:1.5px;">GENEVA · CH</div>
         </div>
       </div>
     </div>
-    <div style="height:1px;background:linear-gradient(90deg,transparent,{BORDER},transparent);margin:0 8px 20px;"></div>
+    <div style="height:1px;background:linear-gradient(90deg,transparent,{BORDER},transparent);margin:0 4px 18px;"></div>
     """, unsafe_allow_html=True)
 
     page = st.radio(
@@ -603,17 +599,19 @@ with st.sidebar:
     )
 
     st.markdown(f"""
-    <div style="height:1px;background:linear-gradient(90deg,transparent,{BORDER},transparent);margin:20px 8px 16px;"></div>
-    <div style="font-family:'Space Mono',monospace;font-size:9px;color:{TEXT_MUTED};padding:0 12px;letter-spacing:1px;">
-      <div style="margin-bottom:10px;color:{MIGROS_ORANGE};letter-spacing:2px;">PIPELINE</div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+    <div style="height:1px;background:linear-gradient(90deg,transparent,{BORDER},transparent);margin:22px 4px 16px;"></div>
+    <div style="background:rgba(255,255,255,0.02);border:1px solid {BORDER};border-radius:12px;
+         padding:14px 16px;margin:0 4px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+         color:{TEXT_MUTED};letter-spacing:1px;">
+      <div style="margin-bottom:11px;color:{ORANGE_LIGHT};letter-spacing:2.5px;font-weight:700;">PIPELINE</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:7px;">
         <span>All communes</span><span style="color:{TEXT_LIGHT};">→ Top 20</span>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:7px;">
         <span>Top 20</span><span style="color:{TEXT_LIGHT};">→ Top 5</span>
       </div>
       <div style="display:flex;justify-content:space-between;">
-        <span>Top 5</span><span style="color:{MIGROS_ORANGE};">→ Champion ★</span>
+        <span>Top 5</span><span style="color:{ORANGE_LIGHT};">→ Champion ★</span>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -639,8 +637,8 @@ st.markdown(f"""
 <div class="top-bar">
   <div class="logo">M</div>
   <div>
-    <div class="title">MIGROS Location Intelligence Engine</div>
-    <div class="subtitle"><span class="live-dot"></span>STRATEGIC 3-STAGE FUNNEL · CANTON OF GENEVA · OLS REGRESSION</div>
+    <div class="title">Migros Location Intelligence</div>
+    <div class="subtitle"><span class="live-dot"></span>3-STAGE FUNNEL · CANTON OF GENEVA · OLS REGRESSION</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -721,13 +719,13 @@ if page == "🏠  Overview":
         ("5",                "Stage 2 → Top 5",   "Socio-Economic Composite Score (Income 35% · Foreign 25% · Age 20% · Urban 20%)"),
         ("1 ★",              "Stage 3 → Champion", f"OLS Opportunity Gap · Winner: {champ_name}"),
     ]
-    for num, title, sub in funnel_data:
+    for (num, title, sub), width in zip(funnel_data, ["100%", "86%", "72%", "58%"]):
         st.markdown(f"""
-        <div class="funnel-step">
+        <div class="funnel-step" style="width:{width};">
           <div class="funnel-num">{num}</div>
           <div>
-            <div style="font-family:'Unbounded',sans-serif;font-weight:700;font-size:14px;">{title}</div>
-            <div style="font-family:'Space Mono',monospace;font-size:10px;color:{TEXT_MUTED};margin-top:4px;">{sub}</div>
+            <div class="funnel-title">{title}</div>
+            <div class="funnel-sub">{sub}</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -820,10 +818,10 @@ elif page == "📊  Stage 1 — Population":
               <td>CHF {int(row['Income (CHF)']):,}</td>
             </tr>"""
         st.markdown(f"""
-        <div style="background:{BG_DARK};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
+        <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
           <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
             <span class="stage-badge">STAGE 1 RESULTS</span>
-            <span style="font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:{TEXT_MUTED};">{len(top20_f)} communes shown</span>
+            <span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:{TEXT_MUTED};">{len(top20_f)} communes shown</span>
           </div>
           <table class="intel-table">
             <thead><tr>
@@ -859,7 +857,7 @@ elif page == "🧮  Stage 2 — Scoring":
         w_urban   = st.slider("Urban Density %",   0, 60, 20, step=5)
 
     total_w = w_income + w_foreign + w_age + w_urban
-    st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:10px;margin-top:8px;">
+    st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:10px;margin-top:8px;">
       Weight total: <span style="color:{'#22c55e' if total_w==100 else MIGROS_ORANGE};font-weight:700;">{total_w}%</span>
       {"✓ Balanced" if total_w==100 else "  ← Adjust to reach 100%"}
     </div>""", unsafe_allow_html=True)
@@ -888,17 +886,16 @@ elif page == "🧮  Stage 2 — Scoring":
 
     # Weight cards
     weights = [('Income', w_income, MIGROS_ORANGE), ('Foreign Residents', w_foreign, MIGROS_TEAL),
-               ('Working Age', w_age, '#9B59B6'), ('Urban Density', w_urban, '#27AE60')]
+               ('Working Age', w_age, '#A78BFA'), ('Urban Density', w_urban, '#34D399')]
     cols = st.columns(4)
     for col, (label, pct, color) in zip(cols, weights):
         with col:
             st.markdown(f"""
-            <div style="background:{CARD_GLASS};border:1px solid {BORDER};border-radius:12px;
-                 padding:16px;text-align:center;border-top:2px solid {color};
-                 backdrop-filter:blur(10px);transition:all 0.2s;">
-              <div style="font-family:'Space Mono',monospace;font-size:9px;color:{TEXT_MUTED};
-                   margin-bottom:8px;letter-spacing:1.5px;text-transform:uppercase;">{label}</div>
-              <div style="font-family:'Unbounded',sans-serif;font-size:26px;font-weight:700;color:{color};">{pct}%</div>
+            <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:12px;
+                 padding:18px 16px;text-align:center;border-top:2px solid {color};">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:{TEXT_MUTED};
+                   margin-bottom:8px;letter-spacing:1.6px;text-transform:uppercase;">{label}</div>
+              <div style="font-family:'Sora',sans-serif;font-size:27px;font-weight:700;color:{color};">{pct}%</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -906,9 +903,9 @@ elif page == "🧮  Stage 2 — Scoring":
 
     dims        = ['SCORE_INCOME', 'SCORE_FOREIGN', 'SCORE_AGE', 'SCORE_URBAN']
     dim_labels  = [f'Income ({w_income}%)', f'Foreign % ({w_foreign}%)', f'Working Age ({w_age}%)', f'Urban Density ({w_urban}%)']
-    dim_colors  = [MIGROS_ORANGE, MIGROS_TEAL, '#9B59B6', '#27AE60']
+    dim_colors  = [MIGROS_ORANGE, MIGROS_TEAL, '#A78BFA', '#34D399']
     dim_weights_list = [w_income/100, w_foreign/100, w_age/100, w_urban/100]
-    pal5 = [MIGROS_ORANGE, MIGROS_TEAL, '#9B59B6', '#27AE60', '#E74C3C']
+    pal5 = [MIGROS_ORANGE, MIGROS_TEAL, '#A78BFA', '#34D399', '#F87171']
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     fig.suptitle('Stage 2  —  Socio-Economic Multi-Factor Analysis', fontsize=14, y=1.02)
@@ -954,7 +951,7 @@ elif page == "🧮  Stage 2 — Scoring":
           <td><b style="color:{MIGROS_ORANGE};">{row['COMPOSITE_SCORE']:.4f}</b></td>
         </tr>"""
     st.markdown(f"""
-    <div style="background:{BG_DARK};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
+    <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
       <div style="margin-bottom:14px;">
         <span class="stage-badge">STAGE 2 RESULTS</span>
       </div>
@@ -1063,7 +1060,7 @@ elif page == "📈  Stage 3 — OLS Model":
           <td>{row['COMPOSITE_SCORE']:.4f}</td>
         </tr>"""
     st.markdown(f"""
-    <div style="background:{BG_DARK};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
+    <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
       <div style="margin-bottom:14px;">
         <span class="stage-badge">STAGE 3 RESULTS</span>
       </div>
@@ -1255,20 +1252,20 @@ elif page == "🗺️  Interactive Map":
             cx = champ_geo.geometry.centroid.iloc[0].x
             cy = champ_geo.geometry.centroid.iloc[0].y
             icon_html = (
-                '<div style="background:#FF6600;border:3px solid #fff;border-radius:50%;'
+                '<div style="background:#FF6B00;border:3px solid #fff;border-radius:50%;'
                 'width:40px;height:40px;display:flex;align-items:center;justify-content:center;'
-                'font-size:22px;box-shadow:0 0 20px #FF6600,0 0 40px rgba(255,102,0,0.5);">&#9733;</div>'
+                'font-size:22px;box-shadow:0 0 20px #FF6B00,0 0 40px rgba(255,107,0,0.5);">&#9733;</div>'
             )
             popup_content = (
                 f"<div style='font-family:monospace;background:#1a0800;color:#e6edf3;"
-                f"padding:16px;border-radius:10px;border:2px solid #FF6600;min-width:210px;'>"
-                f"<b style='color:#FF6600;font-size:13px;'>CHAMPION LOCATION</b><br><br>"
+                f"padding:16px;border-radius:10px;border:2px solid #FF6B00;min-width:210px;'>"
+                f"<b style='color:#FF6B00;font-size:13px;'>CHAMPION LOCATION</b><br><br>"
                 f"<b style='font-size:16px;color:#fff;'>{champ_name}</b><br>"
                 f"<span style='color:#aaa;font-size:11px;'>Canton of Geneva</span><br><br>"
                 f"<span style='color:#8b949e;'>Population </span> {int(champion['POPULATION']):,}<br>"
                 f"<span style='color:#8b949e;'>Stores now </span> {int(champion['STORE_COUNT'])}<br>"
                 f"<span style='color:#8b949e;'>Predicted &nbsp;</span> {champion['PREDICTED_STORES']:.2f}<br>"
-                f"<b style='color:#FF6600;'>Opportunity Gap: +{champion['OPPORTUNITY_SCORE']:.2f}</b><br><br>"
+                f"<b style='color:#FF6B00;'>Opportunity Gap: +{champion['OPPORTUNITY_SCORE']:.2f}</b><br><br>"
                 f"<span style='color:#8b949e;'>Income CHF </span> {int(champion['proxy_purchasing_power_median_chf']):,}<br>"
                 f"<span style='color:#8b949e;'>Foreign %&nbsp; </span> {champion['PCT_FOREIGNERS']:.1f}%"
                 f"</div>"
