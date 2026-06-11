@@ -3,13 +3,9 @@ import pandas as pd
 import numpy as np
 import geopandas as gpd
 import statsmodels.api as sm
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.model_selection import KFold, cross_val_predict
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from scipy import stats
-import plotly.graph_objects as go
-import plotly.io as pio
-from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import seaborn as sns
 import folium
 from streamlit_folium import st_folium
 import os
@@ -468,43 +464,20 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── PLOTLY THEME ──────────────────────────────────────────────
-ACCENT_PURPLE = '#A78BFA'
-ACCENT_GREEN  = '#34D399'
-ACCENT_RED    = '#F87171'
-ACCENT_GOLD   = '#FBBF24'
-GRID          = 'rgba(148,163,184,0.10)'
-
-_axis = dict(
-    gridcolor=GRID, zerolinecolor='rgba(148,163,184,0.22)',
-    linecolor='rgba(148,163,184,0.18)',
-    tickfont=dict(color=TEXT_MUTED, size=11.5),
-    title=dict(font=dict(color=TEXT_MUTED, size=12)),
-)
-pio.templates['migros_dark'] = go.layout.Template(layout=go.Layout(
-    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(family='Inter, sans-serif', color=TEXT_LIGHT, size=13),
-    title=dict(font=dict(family='Sora, sans-serif', size=16, color=TEXT_LIGHT),
-               x=0.01, xanchor='left'),
-    xaxis=_axis, yaxis=_axis,
-    legend=dict(bgcolor='rgba(18,24,38,0.85)', bordercolor=BORDER, borderwidth=1,
-                font=dict(size=11.5, color=TEXT_LIGHT)),
-    hoverlabel=dict(bgcolor='#1A2232', bordercolor='rgba(255,107,0,0.55)',
-                    font=dict(family='Inter, sans-serif', size=12.5, color=TEXT_LIGHT)),
-    margin=dict(l=12, r=12, t=56, b=12),
-    colorway=[MIGROS_ORANGE, MIGROS_TEAL, ACCENT_PURPLE, ACCENT_GREEN, ACCENT_RED, ACCENT_GOLD],
-))
-pio.templates.default = 'migros_dark'
-PLOTLY_CFG = {'displayModeBar': False}
-
-
-def show_chart(fig, height=None):
-    if height:
-        fig.update_layout(height=height)
-    try:
-        st.plotly_chart(fig, width='stretch', config=PLOTLY_CFG)
-    except TypeError:  # older Streamlit
-        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
+# ─── MATPLOTLIB STYLE ──────────────────────────────────────────
+sns.set_theme(style='darkgrid')
+plt.rcParams.update({
+    'figure.facecolor': BG_DARK, 'axes.facecolor': '#101522',
+    'axes.edgecolor': BORDER, 'axes.labelcolor': TEXT_LIGHT,
+    'xtick.color': TEXT_MUTED, 'ytick.color': TEXT_MUTED,
+    'text.color': TEXT_LIGHT, 'grid.color': '#1B2433',
+    'grid.linewidth': 0.6, 'font.family': 'DejaVu Sans',
+    'axes.titlecolor': TEXT_LIGHT, 'axes.titleweight': 'bold',
+    'axes.titlesize': 13, 'axes.titlepad': 14,
+    'axes.spines.top': False, 'axes.spines.right': False,
+    'legend.facecolor': CARD_BG, 'legend.edgecolor': BORDER,
+    'legend.labelcolor': TEXT_LIGHT, 'legend.framealpha': 0.9,
+})
 
 # ─── DATA LOADING (CACHED) ─────────────────────────────────────
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
@@ -538,70 +511,36 @@ def load_data():
 @st.cache_data(show_spinner=False)
 def load_boundaries():
     """Commune boundaries from the bundled GeoJSON — instant startup, no live
-    OSM/Nominatim call (which used to hang the whole app on Streamlit Cloud)."""
-    boundaries = gpd.read_file(_data_path('geneva_communes_boundaries.geojson'))
+    OSM/Nominatim call (which used to hang the app on Streamlit Cloud)."""
+    local = os.path.join(DATA_DIR, 'geneva_communes_boundaries.geojson')
+    path = local if os.path.exists(local) else DATA_URL + 'geneva_communes_boundaries.geojson'
+    boundaries = gpd.read_file(path)
     return boundaries[['COMMUNE_NAME', 'geometry']].set_crs(epsg=4326, allow_override=True)
 
 @st.cache_data(show_spinner=False)
 def build_master(_stores_gdf, _df_pop, _df_power_2022, _boundaries):
     joined = gpd.sjoin(_stores_gdf, _boundaries, how='inner', predicate='intersects')
-    # A store sitting exactly on a shared border matches two polygons — keep one
-    joined = joined[~joined.index.duplicated(keep='first')]
     store_counts = joined.groupby('COMMUNE_NAME').size().reset_index(name='STORE_COUNT')
     df_master = (
         _boundaries
         .merge(_df_pop, left_on='COMMUNE_NAME', right_on='COMMUNE', how='left')
-        .merge(_df_power_2022[['commune', 'proxy_purchasing_power_median_chf',
-                               'proxy_spread_iqr_chf', 'proxy_index_canton_100']],
+        .merge(_df_power_2022[['commune', 'proxy_purchasing_power_median_chf']],
                left_on='COMMUNE_NAME', right_on='commune', how='left')
         .merge(store_counts, on='COMMUNE_NAME', how='left')
     )
-    df_master['STORE_COUNT'] = df_master['STORE_COUNT'].fillna(0)
-
-    # ── Engineered demographic features ───────────────────────
-    pop = df_master['POPULATION']
-    df_master['PCT_WORKING_AGE']      = (df_master['AGE_20_64']    / pop) * 100
-    df_master['PCT_SENIORS']          = (df_master['AGE_65_PLUS']  / pop) * 100
-    df_master['PCT_YOUTH']            = (df_master['AGE_0_19']     / pop) * 100
-    df_master['PCT_FOREIGNERS']       = (df_master['POP_ETR']      / pop) * 100
-    df_master['PCT_SINGLE_FAMILY']    = (df_master['MAISON_INDIV'] / df_master['BATLOG_TOT']) * 100
-    df_master['PCT_APARTMENT_BLOCKS'] = (df_master['BATLOG_10P']   / df_master['BATLOG_TOT']) * 100
-    df_master['DWELLINGS']            = df_master['LOG_TOTAL']
-    # Density from official area (SHAPE.AREA is in m²) → people per km²
-    df_master['POP_DENSITY']          = pop / (df_master['SHAPE.AREA'] / 1e6)
-    df_master['INCOME_IQR']           = df_master['proxy_spread_iqr_chf']
-    # Current retail saturation
-    df_master['STORES_PER_10K']       = (df_master['STORE_COUNT'] / pop) * 10000
-
+    df_master['STORE_COUNT']       = df_master['STORE_COUNT'].fillna(0)
+    df_master['PCT_WORKING_AGE']   = (df_master['AGE_20_64']    / df_master['POPULATION']) * 100
+    df_master['PCT_SINGLE_FAMILY'] = (df_master['MAISON_INDIV'] / df_master['BATLOG_TOT']) * 100
+    df_master['PCT_FOREIGNERS']    = (df_master['POP_ETR']      / df_master['POPULATION']) * 100
     df_clean = df_master.dropna(subset=['POPULATION', 'proxy_purchasing_power_median_chf']).copy()
     df_clean = df_clean[~df_clean['COMMUNE_NAME'].isin(['Genève', 'Geneve', 'Geneva'])].reset_index(drop=True)
     return df_clean, joined
 
-
-# ── Rich feature set shared by the ML model ────────────────────
-ML_FEATURES = [
-    'POPULATION', 'POP_DENSITY', 'PCT_WORKING_AGE', 'PCT_SENIORS',
-    'PCT_FOREIGNERS', 'PCT_SINGLE_FAMILY', 'PCT_APARTMENT_BLOCKS',
-    'DWELLINGS', 'proxy_purchasing_power_median_chf', 'INCOME_IQR',
-]
-ML_FEATURE_LABELS = {
-    'POPULATION': 'Population', 'POP_DENSITY': 'Population density',
-    'PCT_WORKING_AGE': 'Working-age %', 'PCT_SENIORS': 'Seniors %',
-    'PCT_FOREIGNERS': 'Foreign residents %', 'PCT_SINGLE_FAMILY': 'Single-family %',
-    'PCT_APARTMENT_BLOCKS': 'Apartment-block %', 'DWELLINGS': 'Dwellings',
-    'proxy_purchasing_power_median_chf': 'Purchasing power', 'INCOME_IQR': 'Income spread (IQR)',
-}
-
-
 @st.cache_data(show_spinner=False)
 def run_pipeline(_df_clean):
-    df = _df_clean.copy()
+    top20 = _df_clean.sort_values('POPULATION', ascending=False).head(20).copy().reset_index(drop=True)
+    top20['RANK'] = range(1, 21)
 
-    # ═══ STAGE 1 — population shortlist ════════════════════════
-    top20 = df.sort_values('POPULATION', ascending=False).head(20).copy().reset_index(drop=True)
-    top20['RANK'] = range(1, len(top20) + 1)
-
-    # ═══ STAGE 2 — socio-economic composite score ══════════════
     def minmax(s):
         rng = s.max() - s.min()
         return (s - s.min()) / rng if rng > 0 else s * 0.0
@@ -614,165 +553,31 @@ def run_pipeline(_df_clean):
     s2['COMPOSITE_SCORE'] = sum(s2[k] * w for k, w in WEIGHTS.items())
     s2 = s2.sort_values('COMPOSITE_SCORE', ascending=False).reset_index(drop=True)
     top5 = s2.head(5).copy()
-    top5['RANK'] = range(1, len(top5) + 1)
+    top5['RANK'] = range(1, 6)
 
-    # ═══ STAGE 3a — OLS baseline (interpretable) ═══════════════
-    ols_feats = ['POPULATION', 'proxy_purchasing_power_median_chf']
-    X_init = sm.add_constant(df[ols_feats])
-    init_model = sm.OLS(df['STORE_COUNT'], X_init).fit()
+    X_init = sm.add_constant(_df_clean[['POPULATION', 'proxy_purchasing_power_median_chf']])
+    y_init = _df_clean['STORE_COUNT']
+    init_model = sm.OLS(y_init, X_init).fit()
     cooks_d = init_model.get_influence().cooks_distance[0]
-    df_f = df.copy()
+    df_f = _df_clean.copy()
     df_f['COOKS_D'] = cooks_d
     df_filtered = df_f[df_f['COOKS_D'] <= 4 / len(df_f)].copy().reset_index(drop=True)
+    X_final = sm.add_constant(df_filtered[['POPULATION', 'proxy_purchasing_power_median_chf']])
+    y_final = df_filtered['STORE_COUNT']
+    final_model = sm.OLS(y_final, X_final).fit()
+    df_filtered['PREDICTED_STORES'] = final_model.predict(X_final)
+    df_filtered['OPPORTUNITY_SCORE'] = df_filtered['PREDICTED_STORES'] - df_filtered['STORE_COUNT']
 
-    X_final = sm.add_constant(df_filtered[ols_feats])
-    final_model = sm.OLS(df_filtered['STORE_COUNT'], X_final).fit()
-    ols_pred = final_model.get_prediction(X_final)
-    df_filtered['PREDICTED_STORES']     = ols_pred.predicted_mean
-    df_filtered['OLS_PRED']             = ols_pred.predicted_mean
-    ci = ols_pred.conf_int(obs=True)
-    df_filtered['OLS_PRED_LO']          = ci[:, 0]
-    df_filtered['OLS_PRED_HI']          = ci[:, 1]
-    df_filtered['OPPORTUNITY_SCORE']    = df_filtered['PREDICTED_STORES'] - df_filtered['STORE_COUNT']
-    df_filtered['OLS_RESID']            = df_filtered['STORE_COUNT'] - df_filtered['PREDICTED_STORES']
-
-    # ═══ STAGE 3b — Gradient Boosting (richer, non-linear) ═════
-    feat = [f for f in ML_FEATURES if f in df_filtered.columns]
-    Xml = df_filtered[feat].apply(lambda c: c.fillna(c.median()))
-    yml = df_filtered['STORE_COUNT']
-
-    gbr = GradientBoostingRegressor(n_estimators=250, max_depth=2,
-                                    learning_rate=0.05, subsample=0.9, random_state=42)
-    # Honest out-of-sample predictions via K-fold CV (small-sample friendly)
-    k = min(5, max(2, len(df_filtered) // 6))
-    kf = KFold(n_splits=k, shuffle=True, random_state=42)
-    cv_pred = cross_val_predict(gbr, Xml, yml, cv=kf)
-    cv_r2   = r2_score(yml, cv_pred)
-    cv_rmse = float(np.sqrt(mean_squared_error(yml, cv_pred)))
-    cv_mae  = float(mean_absolute_error(yml, cv_pred))
-
-    gbr.fit(Xml, yml)
-    df_filtered['ML_PRED']           = gbr.predict(Xml)
-    df_filtered['ML_CV_PRED']        = cv_pred
-    df_filtered['ML_OPPORTUNITY']    = df_filtered['ML_PRED'] - df_filtered['STORE_COUNT']
-    df_filtered['ML_RESID']          = df_filtered['STORE_COUNT'] - df_filtered['ML_PRED']
-
-    importances = (pd.DataFrame({'feature': feat, 'importance': gbr.feature_importances_})
-                   .sort_values('importance', ascending=False).reset_index(drop=True))
-
-    ols_r2   = float(final_model.rsquared)
-    ols_pred_in = final_model.predict(X_final)
-    ols_rmse = float(np.sqrt(mean_squared_error(df_filtered['STORE_COUNT'], ols_pred_in)))
-
-    # ═══ Blended opportunity (OLS + ML) → champion ═════════════
-    df_filtered['BLENDED_OPPORTUNITY'] = (
-        df_filtered['OPPORTUNITY_SCORE'] + df_filtered['ML_OPPORTUNITY']) / 2
-
-    model_cols = ['COMMUNE_NAME', 'PREDICTED_STORES', 'OPPORTUNITY_SCORE',
-                  'OLS_PRED_LO', 'OLS_PRED_HI', 'ML_PRED', 'ML_OPPORTUNITY',
-                  'BLENDED_OPPORTUNITY']
     top5_ols = (
         top5
-        .merge(df_filtered[model_cols], on='COMMUNE_NAME', how='left')
-        .sort_values('BLENDED_OPPORTUNITY', ascending=False)
+        .merge(df_filtered[['COMMUNE_NAME', 'PREDICTED_STORES', 'OPPORTUNITY_SCORE']],
+               on='COMMUNE_NAME', how='left')
+        .sort_values('OPPORTUNITY_SCORE', ascending=False)
         .reset_index(drop=True)
     )
     top5_ols['RANK'] = range(1, len(top5_ols) + 1)
     champion = top5_ols.iloc[0].copy()
-
-    diagnostics = {
-        'ols_r2': ols_r2, 'ols_rmse': ols_rmse,
-        'cv_r2': cv_r2, 'cv_rmse': cv_rmse, 'cv_mae': cv_mae,
-        'importances': importances, 'k_folds': k,
-        'n_train': len(df_filtered), 'n_outliers': len(df) - len(df_filtered),
-        'features': feat, 'ols_summary': str(final_model.summary()),
-    }
-    return top20, top5, top5_ols, champion, df_filtered, final_model, diagnostics
-
-
-# ─── GEOSPATIAL HELPERS (lat/lon, no routing dependency) ───────
-def _haversine_km(lat1, lon1, lat2, lon2):
-    """Vectorised great-circle distance in km."""
-    R = 6371.0088
-    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    return R * 2 * np.arcsin(np.sqrt(a))
-
-
-@st.cache_data(show_spinner=False)
-def catchment_analysis(_stores_df, radius_m=800):
-    """For every store: neighbours, own-brand overlap and a saturation index."""
-    s = _stores_df.copy().reset_index(drop=True)
-    lat = s['latitude'].to_numpy()
-    lon = s['longitude'].to_numpy()
-    brand = s['brand_category'].fillna('Other').to_numpy()
-    r_km = radius_m / 1000.0
-    n = len(s)
-    neigh_all, neigh_same, nearest = np.zeros(n), np.zeros(n), np.zeros(n)
-    for i in range(n):
-        d = _haversine_km(lat[i], lon[i], lat, lon)
-        within = (d <= r_km) & (np.arange(n) != i)
-        neigh_all[i] = within.sum()
-        neigh_same[i] = (within & (brand == brand[i])).sum()
-        other = d[np.arange(n) != i]
-        nearest[i] = other.min() if len(other) else np.nan
-    s['NEIGHBORS'] = neigh_all
-    s['SAME_BRAND_NEAR'] = neigh_same
-    s['NEAREST_KM'] = nearest
-    # Saturation: more neighbours + closer competitor ⇒ higher cannibalisation risk
-    s['SATURATION'] = neigh_all + neigh_same * 0.5
-    return s
-
-
-@st.cache_data(show_spinner=False)
-def build_site_grid(_boundaries, _stores_df, _df_models, n_side=70, target_communes=None):
-    """Grid of candidate sites scored by demand (commune) vs supply gap (distance)."""
-    from shapely.geometry import Point
-    minx, miny, maxx, maxy = _boundaries.total_bounds
-    xs = np.linspace(minx, maxx, n_side)
-    ys = np.linspace(miny, maxy, n_side)
-    gx, gy = np.meshgrid(xs, ys)
-    pts = gpd.GeoDataFrame(
-        {'lon': gx.ravel(), 'lat': gy.ravel()},
-        geometry=[Point(x, y) for x, y in zip(gx.ravel(), gy.ravel())],
-        crs='EPSG:4326',
-    )
-    # Keep only points inside the canton, tagged with their commune
-    inside = gpd.sjoin(pts, _boundaries[['COMMUNE_NAME', 'geometry']],
-                       how='inner', predicate='within').drop(columns='index_right')
-    if target_communes:
-        inside = inside[inside['COMMUNE_NAME'].isin(target_communes)]
-    inside = inside.reset_index(drop=True)
-    if inside.empty:
-        return inside
-
-    # Distance to nearest existing store (supply gap)
-    slat = _stores_df['latitude'].to_numpy()
-    slon = _stores_df['longitude'].to_numpy()
-    dist = np.array([_haversine_km(la, lo, slat, slon).min()
-                     for la, lo in zip(inside['lat'], inside['lon'])])
-    inside['DIST_NEAREST_KM'] = dist
-
-    # Demand from the host commune
-    demand = _df_models[['COMMUNE_NAME', 'POP_DENSITY', 'proxy_purchasing_power_median_chf',
-                         'BLENDED_OPPORTUNITY']].copy()
-    inside = inside.merge(demand, on='COMMUNE_NAME', how='left')
-
-    def mm(s):
-        rng = s.max() - s.min()
-        return (s - s.min()) / rng if rng and rng > 0 else s * 0.0
-    inside['SUPPLY_GAP']   = mm(inside['DIST_NEAREST_KM'])
-    inside['DEMAND_DENS']  = mm(inside['POP_DENSITY'])
-    inside['DEMAND_INCOME'] = mm(inside['proxy_purchasing_power_median_chf'])
-    inside['DEMAND_OPP']   = mm(inside['BLENDED_OPPORTUNITY'].clip(lower=0))
-    inside['SITE_SCORE'] = (0.40 * inside['SUPPLY_GAP'] +
-                            0.25 * inside['DEMAND_DENS'] +
-                            0.15 * inside['DEMAND_INCOME'] +
-                            0.20 * inside['DEMAND_OPP'])
-    return inside.sort_values('SITE_SCORE', ascending=False).reset_index(drop=True)
-
+    return top20, top5, top5_ols, champion, df_filtered, final_model
 
 # ─── SIDEBAR ──────────────────────────────────────────────────
 with st.sidebar:
@@ -794,8 +599,7 @@ with st.sidebar:
     page = st.radio(
         "NAVIGATION",
         ["🏠  Overview", "📊  Stage 1 — Population", "🧮  Stage 2 — Scoring",
-         "📈  Stage 3 — OLS vs ML", "🤖  Model Lab", "📡  Catchment & Overlap",
-         "🎯  Site Finder", "📋  Demographic Dashboard", "🗺️  Interactive Map"],
+         "📈  Stage 3 — OLS Model", "📋  Demographic Dashboard", "🗺️  Interactive Map"],
         label_visibility="visible"
     )
 
@@ -818,12 +622,12 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ─── LOAD DATA ─────────────────────────────────────────────────
-with st.spinner("Loading data & fitting models…"):
+with st.spinner("Initialising intelligence engine…"):
     try:
         stores_gdf, df_pop, df_power_2022 = load_data()
         boundaries = load_boundaries()
         df_clean, joined_stores = build_master(stores_gdf, df_pop, df_power_2022, boundaries)
-        top20, top5, top5_ols, champion, df_filtered, final_model, diag = run_pipeline(df_clean)
+        top20, top5, top5_ols, champion, df_filtered, final_model = run_pipeline(df_clean)
         data_ok = True
     except Exception as e:
         data_ok = False
@@ -982,28 +786,24 @@ elif page == "📊  Stage 1 — Population":
     if top20_f.empty:
         st.warning("No communes match the current filters.")
     else:
-        d = top20_f.sort_values('POPULATION', ascending=True)
-        colors = [MIGROS_ORANGE if n == d['POPULATION'].idxmax() else 'rgba(79,179,232,0.75)'
-                  for n in d.index]
-        fig = go.Figure(go.Bar(
-            x=d['POPULATION'], y=d['COMMUNE_NAME'], orientation='h',
-            marker=dict(color=colors, cornerradius=6),
-            text=[f"{v:,}" for v in d['POPULATION']],
-            textposition='outside', textfont=dict(size=11, color=TEXT_MUTED),
-            customdata=np.stack([d['STORE_COUNT'], d['PCT_FOREIGNERS'],
-                                 d['proxy_purchasing_power_median_chf']], axis=-1),
-            hovertemplate='<b>%{y}</b><br>Population %{x:,}<br>'
-                          'Stores %{customdata[0]:.0f} · Foreign %{customdata[1]:.1f}%%<br>'
-                          'Income CHF %{customdata[2]:,.0f}<extra></extra>',
-        ))
-        fig.update_layout(
-            title='Top Communes by Population',
-            xaxis=dict(title='Resident population', tickformat='~s'),
-            yaxis=dict(title=None), bargap=0.32,
-            height=max(380, len(d) * 34 + 110),
-        )
-        fig.update_xaxes(range=[0, d['POPULATION'].max() * 1.14])
-        show_chart(fig)
+        fig, ax = plt.subplots(figsize=(13, max(5, len(top20_f) * 0.42)))
+        colors = [MIGROS_ORANGE if i == 0 else MIGROS_TEAL for i in range(len(top20_f))]
+        bars = ax.barh(top20_f['COMMUNE_NAME'], top20_f['POPULATION'], color=colors, edgecolor='none', height=0.65)
+        ax.invert_yaxis()
+        ax.set_xlabel('Resident Population', fontsize=11)
+        ax.set_title('Stage 1  —  Top Communes by Population')
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x/1000:.0f}K'))
+        for bar, val in zip(bars, top20_f['POPULATION']):
+            ax.text(val + 50, bar.get_y() + bar.get_height() / 2,
+                    f'{val:,}', va='center', ha='left', fontsize=8, color=TEXT_MUTED)
+        legend_patches = [
+            mpatches.Patch(color=MIGROS_ORANGE, label='#1 Largest'),
+            mpatches.Patch(color=MIGROS_TEAL,   label='Top 20'),
+        ]
+        ax.legend(handles=legend_patches, loc='lower right')
+        plt.tight_layout(pad=1.5)
+        st.pyplot(fig)
+        plt.close()
 
         st.markdown(f"<div style='height:20px'></div>", unsafe_allow_html=True)
         display_cols = top20_f[['RANK', 'COMMUNE_NAME', 'POPULATION', 'STORE_COUNT',
@@ -1110,35 +910,37 @@ elif page == "🧮  Stage 2 — Scoring":
     dim_labels  = [f'Income ({w_income}%)', f'Foreign % ({w_foreign}%)', f'Working Age ({w_age}%)', f'Urban Density ({w_urban}%)']
     dim_colors  = [MIGROS_ORANGE, MIGROS_TEAL, '#A78BFA', '#34D399']
     dim_weights_list = [w_income/100, w_foreign/100, w_age/100, w_urban/100]
-    c1, c2 = st.columns(2)
+    pal5 = [MIGROS_ORANGE, MIGROS_TEAL, '#A78BFA', '#34D399', '#F87171']
 
-    with c1:
-        d = s2_data.sort_values('COMPOSITE_SCORE', ascending=True)
-        colors = [MIGROS_ORANGE if v == d['COMPOSITE_SCORE'].max()
-                  else 'rgba(79,179,232,0.7)' for v in d['COMPOSITE_SCORE']]
-        fig = go.Figure(go.Bar(
-            x=d['COMPOSITE_SCORE'], y=d['COMMUNE_NAME'], orientation='h',
-            marker=dict(color=colors, cornerradius=6),
-            text=[f"{v:.3f}" for v in d['COMPOSITE_SCORE']],
-            textposition='outside', textfont=dict(size=11.5, color=TEXT_LIGHT),
-            hovertemplate='<b>%{y}</b><br>Composite score %{x:.4f}<extra></extra>',
-        ))
-        fig.update_layout(title='Composite Score', bargap=0.35,
-                          xaxis=dict(title='Score (0–1)',
-                                     range=[0, max(0.01, d['COMPOSITE_SCORE'].max()) * 1.22]),
-                          yaxis=dict(title=None))
-        show_chart(fig, height=400)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig.suptitle('Stage 2  —  Socio-Economic Multi-Factor Analysis', fontsize=14, y=1.02)
 
-    with c2:
-        fig = go.Figure()
-        for dim, lbl, col, w in zip(dims, dim_labels, dim_colors, dim_weights_list):
-            fig.add_bar(name=lbl, x=s2_data['COMMUNE_NAME'], y=s2_data[dim] * w,
-                        marker=dict(color=col, cornerradius=4),
-                        hovertemplate='<b>%{x}</b><br>' + lbl + ': %{y:.3f}<extra></extra>')
-        fig.update_layout(title='Breakdown by Dimension', barmode='stack', bargap=0.42,
-                          yaxis=dict(title='Weighted score'), xaxis=dict(title=None),
-                          legend=dict(orientation='h', y=1.06, x=0))
-        show_chart(fig, height=400)
+    ax1 = axes[0]
+    bars = ax1.barh(s2_data['COMMUNE_NAME'], s2_data['COMPOSITE_SCORE'],
+                    color=pal5[:len(s2_data)], height=0.6, edgecolor='none')
+    ax1.invert_yaxis()
+    ax1.set_xlabel('Composite Score (0–1)', fontsize=10)
+    ax1.set_title('Composite Socio-Economic Score')
+    for bar, sc in zip(bars, s2_data['COMPOSITE_SCORE']):
+        ax1.text(sc + 0.005, bar.get_y() + bar.get_height() / 2,
+                 f'{sc:.3f}', va='center', fontsize=10, color=TEXT_LIGHT)
+
+    ax2 = axes[1]
+    x = np.arange(len(s2_data))
+    bottom = np.zeros(len(s2_data))
+    for dim, lbl, col, w in zip(dims, dim_labels, dim_colors, dim_weights_list):
+        vals = s2_data[dim].values * w
+        ax2.bar(x, vals, bottom=bottom, label=lbl, color=col, edgecolor='none', width=0.55, alpha=0.9)
+        bottom += vals
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(s2_data['COMMUNE_NAME'], rotation=22, ha='right', fontsize=9)
+    ax2.set_ylabel('Weighted Score')
+    ax2.set_title('Score Breakdown by Dimension')
+    ax2.legend(loc='upper right', fontsize=8)
+
+    plt.tight_layout(pad=1.5)
+    st.pyplot(fig)
+    plt.close()
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     rows_html = ""
@@ -1172,33 +974,13 @@ elif page == "🧮  Stage 2 — Scoring":
 # ═══════════════════════════════════════════════════════════════
 # PAGE: STAGE 3
 # ═══════════════════════════════════════════════════════════════
-elif page == "📈  Stage 3 — OLS vs ML":
+elif page == "📈  Stage 3 — OLS Model":
 
     st.markdown(f"""
     <div class="stage-badge">◈ STAGE 3</div>
-    <div class="section-title">Opportunity Gap — OLS vs Machine Learning</div>
-    <div class="section-sub">Two models estimate the "expected" store count; the gap vs reality flags
-    under-served markets. The champion is ranked on the <b>blended</b> gap of both models.</div>
+    <div class="section-title">OLS Regression — Opportunity Gap</div>
+    <div class="section-sub">Gap = Predicted Stores − Current Stores · Highest gap = most under-served market</div>
     """, unsafe_allow_html=True)
-
-    # ── Model-agreement comparison (OLS · ML · Blended) ─────────
-    comp = top5_ols.sort_values('BLENDED_OPPORTUNITY', ascending=True).reset_index(drop=True)
-    fig = go.Figure()
-    for col, label, color in [('OPPORTUNITY_SCORE', 'OLS gap', MIGROS_TEAL),
-                              ('ML_OPPORTUNITY', 'ML gap', ACCENT_PURPLE),
-                              ('BLENDED_OPPORTUNITY', 'Blended', MIGROS_ORANGE)]:
-        fig.add_bar(name=label, y=comp['COMMUNE_NAME'], x=comp[col], orientation='h',
-                    marker=dict(color=color, cornerradius=5),
-                    hovertemplate='<b>%{y}</b><br>' + label + ': %{x:+.2f}<extra></extra>')
-    fig.add_vline(x=0, line=dict(color='rgba(148,163,184,0.35)', dash='dash', width=1))
-    fig.update_layout(title='Model Agreement on Under-supply', barmode='group',
-                      bargap=0.30, bargroupgap=0.08,
-                      xaxis=dict(title='Opportunity gap (predicted − actual stores)'),
-                      yaxis=dict(title=None),
-                      legend=dict(orientation='h', y=1.08, x=0))
-    show_chart(fig, height=420)
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # ── Filters ────────────────────────────────────────────────
     st.markdown(f'<div class="filter-panel"><div class="filter-title">⚙ Filters</div>', unsafe_allow_html=True)
@@ -1217,78 +999,70 @@ elif page == "📈  Stage 3 — OLS vs ML":
     elif sort_by == "Predicted Stores ↓":
         top5_view = top5_view.sort_values('PREDICTED_STORES', ascending=False)
 
-    c1, c2 = st.columns(2)
+    pal3 = [MIGROS_ORANGE if i == 0 else MIGROS_TEAL for i in range(len(top5_view))]
 
-    with c1:
-        d = top5_view.sort_values('OPPORTUNITY_SCORE', ascending=True)
-        colors = [MIGROS_ORANGE if v == d['OPPORTUNITY_SCORE'].max()
-                  else 'rgba(79,179,232,0.7)' for v in d['OPPORTUNITY_SCORE']]
-        fig = go.Figure(go.Bar(
-            x=d['OPPORTUNITY_SCORE'], y=d['COMMUNE_NAME'], orientation='h',
-            marker=dict(color=colors, cornerradius=6),
-            text=[f"{v:+.2f}" for v in d['OPPORTUNITY_SCORE']],
-            textposition='outside', textfont=dict(size=11.5, color=TEXT_LIGHT),
-            hovertemplate='<b>%{y}</b><br>OLS gap %{x:+.2f}<extra></extra>',
-        ))
-        fig.add_vline(x=0, line=dict(color='rgba(148,163,184,0.35)', dash='dash', width=1))
-        fig.update_layout(title='OLS Opportunity Gap', bargap=0.35,
-                          xaxis=dict(title='Predicted − actual stores'),
-                          yaxis=dict(title=None))
-        show_chart(fig, height=400)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig.suptitle('Stage 3  —  OLS Regression: Market Opportunity Analysis', fontsize=14, y=1.02)
 
-    with c2:
-        if not top5_view.empty:
-            vals = list(top5_view['STORE_COUNT']) + list(top5_view['PREDICTED_STORES'].dropna())
-            lim_lo, lim_hi = max(0, min(vals) - 0.4), max(vals) + 0.9
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=[lim_lo, lim_hi], y=[lim_lo, lim_hi], mode='lines',
-                line=dict(color='rgba(148,163,184,0.4)', dash='dash', width=1.4),
-                name='Equilibrium', hoverinfo='skip'))
-            best = top5_view['BLENDED_OPPORTUNITY'].idxmax()
-            err = (top5_view['OLS_PRED_HI'] - top5_view['PREDICTED_STORES']).abs()
-            fig.add_trace(go.Scatter(
-                x=top5_view['STORE_COUNT'], y=top5_view['PREDICTED_STORES'],
-                mode='markers+text', text=top5_view['COMMUNE_NAME'],
-                textposition='middle right', textfont=dict(size=11, color=TEXT_MUTED),
-                error_y=dict(type='data', array=err, visible=True,
-                             color='rgba(148,163,184,0.35)', thickness=1, width=4),
-                marker=dict(
-                    size=16, line=dict(color='white', width=1.2),
-                    color=[MIGROS_ORANGE if i == best else MIGROS_TEAL
-                           for i in top5_view.index],
-                    symbol=['star' if i == best else 'circle' for i in top5_view.index]),
-                name='Commune',
-                hovertemplate='<b>%{text}</b><br>Actual %{x:.0f} · Predicted %{y:.2f}'
-                              '<extra></extra>'))
-            fig.add_annotation(x=lim_lo + (lim_hi-lim_lo)*0.04, y=lim_hi - (lim_hi-lim_lo)*0.06,
-                               text='<i>Above line = under-served</i>', showarrow=False,
-                               font=dict(size=11, color=MIGROS_ORANGE), xanchor='left')
-            fig.update_layout(title='Actual vs Predicted (with 95% CI)',
-                              xaxis=dict(title='Actual stores', range=[lim_lo, lim_hi]),
-                              yaxis=dict(title='OLS-predicted stores', range=[lim_lo, lim_hi]),
-                              showlegend=False)
-            show_chart(fig, height=400)
+    ax1 = axes[0]
+    ax1.barh(top5_view['COMMUNE_NAME'], top5_view['OPPORTUNITY_SCORE'],
+             color=pal3, height=0.6, edgecolor='none')
+    ax1.invert_yaxis()
+    ax1.set_xlabel('Opportunity Gap (Predicted − Actual Stores)', fontsize=10)
+    ax1.set_title('Opportunity Gap by Commune')
+    ax1.axvline(0, color='#444', linewidth=1, linestyle='--', alpha=0.6)
+    for i, (_, row) in enumerate(top5_view.iterrows()):
+        sign = '+' if row['OPPORTUNITY_SCORE'] >= 0 else ''
+        ax1.text(row['OPPORTUNITY_SCORE'] + 0.015, i,
+                 f"{sign}{row['OPPORTUNITY_SCORE']:.2f}", va='center', ha='left',
+                 fontsize=10, color=TEXT_LIGHT)
+
+    ax2 = axes[1]
+    if not top5_view.empty:
+        all_vals = list(top5_view['STORE_COUNT']) + list(top5_view['PREDICTED_STORES'].dropna())
+        lim_max = max(all_vals) + 0.9
+        lim_min = max(0, min(all_vals) - 0.3)
+        ax2.plot([lim_min, lim_max], [lim_min, lim_max], color='#555', linestyle='--', lw=1.2,
+                 label='Perfect equilibrium', zorder=1)
+        for i, (_, row) in enumerate(top5_view.iterrows()):
+            c = MIGROS_ORANGE if i == 0 else MIGROS_TEAL
+            ax2.scatter(row['STORE_COUNT'], row['PREDICTED_STORES'],
+                        color=c, s=220, zorder=5, edgecolors='white', lw=1)
+            ax2.annotate(row['COMMUNE_NAME'], (row['STORE_COUNT'], row['PREDICTED_STORES']),
+                         textcoords='offset points', xytext=(9, 4), fontsize=8.5, color=TEXT_LIGHT)
+        ax2.set_xlim(lim_min, lim_max)
+        ax2.set_ylim(lim_min, lim_max)
+        ax2.set_xlabel('Actual Stores')
+        ax2.set_ylabel('Model-Predicted Stores')
+        ax2.set_title('Actual vs Predicted Stores')
+        ax2.legend(fontsize=8)
+        ax2.text(lim_min + 0.05, lim_max - 0.3, 'Above line = under-served',
+                 fontsize=8, color=MIGROS_ORANGE, style='italic')
+
+    plt.tight_layout(pad=1.5)
+    st.pyplot(fig)
+    plt.close()
 
     with st.expander("📋 View OLS Regression Summary"):
-        st.code(diag['ols_summary'], language='text')
+        X_f = sm.add_constant(df_filtered[['POPULATION', 'proxy_purchasing_power_median_chf']])
+        y_f = df_filtered['STORE_COUNT']
+        model = sm.OLS(y_f, X_f).fit()
+        st.code(str(model.summary()), language='text')
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    def _gap(v):
-        return f"+{v:.2f}" if v >= 0 else f"{v:.2f}"
     rows_html = ""
     for i, (_, row) in enumerate(top5_view.iterrows()):
         badge = {0: '🥇 ★', 1: '🥈', 2: '🥉'}.get(i, '')
-        bl_color = MIGROS_ORANGE if row['BLENDED_OPPORTUNITY'] == top5_view['BLENDED_OPPORTUNITY'].max() else TEXT_LIGHT
+        gap_color = MIGROS_ORANGE if row['OPPORTUNITY_SCORE'] == top5_view['OPPORTUNITY_SCORE'].max() else TEXT_LIGHT
+        gap_val = f"+{row['OPPORTUNITY_SCORE']:.2f}" if row['OPPORTUNITY_SCORE'] >= 0 else f"{row['OPPORTUNITY_SCORE']:.2f}"
         rows_html += f"""<tr>
           <td>{int(row['RANK'])}</td>
           <td>{badge} {row['COMMUNE_NAME']}</td>
+          <td>{int(row['POPULATION']):,}</td>
           <td>{int(row['STORE_COUNT'])}</td>
           <td>{row['PREDICTED_STORES']:.2f}</td>
-          <td>{row['ML_PRED']:.2f}</td>
-          <td style="color:{MIGROS_TEAL};">{_gap(row['OPPORTUNITY_SCORE'])}</td>
-          <td style="color:#A78BFA;">{_gap(row['ML_OPPORTUNITY'])}</td>
-          <td><b style="color:{bl_color};">{_gap(row['BLENDED_OPPORTUNITY'])}</b></td>
+          <td><b style="color:{gap_color};">{gap_val}</b></td>
+          <td>{row['COMPOSITE_SCORE']:.4f}</td>
         </tr>"""
     st.markdown(f"""
     <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
@@ -1297,8 +1071,8 @@ elif page == "📈  Stage 3 — OLS vs ML":
       </div>
       <table class="intel-table">
         <thead><tr>
-          <th>RANK</th><th>COMMUNE</th><th>STORES NOW</th>
-          <th>OLS PRED</th><th>ML PRED</th><th>OLS GAP</th><th>ML GAP</th><th>BLENDED GAP</th>
+          <th>RANK</th><th>COMMUNE</th><th>POPULATION</th><th>STORES NOW</th>
+          <th>PREDICTED</th><th>GAP (OPPORTUNITY)</th><th>SOCIO SCORE</th>
         </tr></thead>
         <tbody>{rows_html}</tbody>
       </table>
@@ -1309,12 +1083,12 @@ elif page == "📈  Stage 3 — OLS vs ML":
     champ_name = champion['COMMUNE_NAME']
     stats_html = ""
     for lbl, val, col in [
-        ('STORES NOW',     f"{int(champion['STORE_COUNT'])}",                          TEXT_LIGHT),
-        ('OLS PRED',       f"{champion['PREDICTED_STORES']:.2f}",                      MIGROS_TEAL),
-        ('ML PRED',        f"{champion['ML_PRED']:.2f}",                               '#A78BFA'),
-        ('BLENDED GAP',    f"+{champion['BLENDED_OPPORTUNITY']:.2f}",                  MIGROS_ORANGE),
-        ('INCOME CHF',     f"{int(champion['proxy_purchasing_power_median_chf']):,}",   TEXT_LIGHT),
-        ('FOREIGN %',      f"{champion['PCT_FOREIGNERS']:.1f}%",                       MIGROS_TEAL),
+        ('POPULATION',      f"{int(champion['POPULATION']):,}",                              TEXT_LIGHT),
+        ('STORES NOW',      f"{int(champion['STORE_COUNT'])}",                               TEXT_LIGHT),
+        ('PREDICTED',       f"{champion['PREDICTED_STORES']:.2f}",                           TEXT_LIGHT),
+        ('OPPORTUNITY GAP', f"+{champion['OPPORTUNITY_SCORE']:.2f}",                         MIGROS_ORANGE),
+        ('INCOME CHF',      f"{int(champion['proxy_purchasing_power_median_chf']):,}",        TEXT_LIGHT),
+        ('FOREIGN %',       f"{champion['PCT_FOREIGNERS']:.1f}%",                            MIGROS_TEAL),
     ]:
         stats_html += f"""
         <div class="champion-stat">
@@ -1333,319 +1107,6 @@ elif page == "📈  Stage 3 — OLS vs ML":
 
 
 # ═══════════════════════════════════════════════════════════════
-# PAGE: MODEL LAB  (diagnostics + ML internals)
-# ═══════════════════════════════════════════════════════════════
-elif page == "🤖  Model Lab":
-
-    st.markdown(f"""
-    <div class="stage-badge">◈ MODEL LAB</div>
-    <div class="section-title">Model Diagnostics & Drivers</div>
-    <div class="section-sub">Honest out-of-sample performance (K-fold CV), what drives the
-    Gradient-Boosting prediction, and residual checks for both models.</div>
-    """, unsafe_allow_html=True)
-
-    # ── Performance KPIs ───────────────────────────────────────
-    st.markdown(f"""
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">OLS · R²</div>
-        <div class="kpi-value">{diag['ols_r2']:.3f}</div><div class="kpi-sub">IN-SAMPLE FIT</div></div>
-      <div class="kpi-card"><div class="kpi-label">OLS · RMSE</div>
-        <div class="kpi-value">{diag['ols_rmse']:.2f}</div><div class="kpi-sub">STORES</div></div>
-      <div class="kpi-card"><div class="kpi-label">ML · CV R²</div>
-        <div class="kpi-value kpi-accent">{diag['cv_r2']:.3f}</div><div class="kpi-sub">{diag['k_folds']}-FOLD OUT-OF-SAMPLE</div></div>
-      <div class="kpi-card"><div class="kpi-label">ML · CV RMSE</div>
-        <div class="kpi-value">{diag['cv_rmse']:.2f}</div><div class="kpi-sub">STORES</div></div>
-      <div class="kpi-card"><div class="kpi-label">ML · CV MAE</div>
-        <div class="kpi-value">{diag['cv_mae']:.2f}</div><div class="kpi-sub">STORES</div></div>
-      <div class="kpi-card"><div class="kpi-label">Training Set</div>
-        <div class="kpi-value">{diag['n_train']}</div><div class="kpi-sub">{diag['n_outliers']} OUTLIERS REMOVED</div></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── Feature importance ─────────────────────────────────────
-    imp = diag['importances'].copy()
-    imp['label'] = imp['feature'].map(ML_FEATURE_LABELS).fillna(imp['feature'])
-    imp = imp.sort_values('importance', ascending=True)
-    frac = imp['importance'] / max(imp['importance'].max(), 1e-9)
-    fig = go.Figure(go.Bar(
-        x=imp['importance'], y=imp['label'], orientation='h',
-        marker=dict(cornerradius=6,
-                    color=[f'rgba(255,107,0,{0.35 + 0.65*f:.2f})' for f in frac]),
-        text=[f"{v:.2f}" for v in imp['importance']],
-        textposition='outside', textfont=dict(size=11, color=TEXT_MUTED),
-        hovertemplate='<b>%{y}</b><br>Importance %{x:.3f}<extra></extra>',
-    ))
-    fig.update_layout(title='What Drives the ML Store-Demand Model',
-                      xaxis=dict(title='Relative importance',
-                                 range=[0, imp['importance'].max() * 1.15]),
-                      yaxis=dict(title=None), bargap=0.32,
-                      height=max(360, len(imp) * 36 + 110))
-    show_chart(fig)
-
-    # ── Residual diagnostics (2×2 interactive grid) ─────────────
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    names = df_filtered['COMMUNE_NAME']
-    fig = make_subplots(rows=2, cols=2, vertical_spacing=0.14, horizontal_spacing=0.09,
-                        subplot_titles=('OLS — Fitted vs Residual', 'ML — Fitted vs Residual',
-                                        'OLS Residuals — Normal Q-Q',
-                                        'ML — Actual vs Out-of-Sample'))
-    _pt = '<b>%{customdata}</b><br>x %{x:.2f} · y %{y:.2f}<extra></extra>'
-
-    fig.add_trace(go.Scatter(x=df_filtered['PREDICTED_STORES'], y=df_filtered['OLS_RESID'],
-                             mode='markers', customdata=names, hovertemplate=_pt,
-                             marker=dict(color=MIGROS_TEAL, size=9, opacity=0.85,
-                                         line=dict(color='white', width=0.6))), 1, 1)
-    fig.add_hline(y=0, line=dict(color=MIGROS_ORANGE, dash='dash', width=1.2), row=1, col=1)
-
-    fig.add_trace(go.Scatter(x=df_filtered['ML_PRED'], y=df_filtered['ML_RESID'],
-                             mode='markers', customdata=names, hovertemplate=_pt,
-                             marker=dict(color=ACCENT_PURPLE, size=9, opacity=0.85,
-                                         line=dict(color='white', width=0.6))), 1, 2)
-    fig.add_hline(y=0, line=dict(color=MIGROS_ORANGE, dash='dash', width=1.2), row=1, col=2)
-
-    (qq_x, qq_y), (qq_s, qq_i, _) = stats.probplot(df_filtered['OLS_RESID'].dropna(), dist='norm')
-    fig.add_trace(go.Scatter(x=qq_x, y=qq_y, mode='markers',
-                             marker=dict(color=MIGROS_TEAL, size=8, opacity=0.85,
-                                         line=dict(color='white', width=0.5)),
-                             hovertemplate='Theoretical %{x:.2f}<br>Sample %{y:.2f}<extra></extra>'), 2, 1)
-    fig.add_trace(go.Scatter(x=qq_x, y=qq_s * qq_x + qq_i, mode='lines',
-                             line=dict(color=MIGROS_ORANGE, width=1.6), hoverinfo='skip'), 2, 1)
-
-    mx = max(df_filtered['STORE_COUNT'].max(), df_filtered['ML_CV_PRED'].max()) + 0.5
-    fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode='lines', hoverinfo='skip',
-                             line=dict(color='rgba(148,163,184,0.4)', dash='dash', width=1.3)), 2, 2)
-    fig.add_trace(go.Scatter(x=df_filtered['STORE_COUNT'], y=df_filtered['ML_CV_PRED'],
-                             mode='markers', customdata=names, hovertemplate=_pt,
-                             marker=dict(color=MIGROS_ORANGE, size=9, opacity=0.9,
-                                         line=dict(color='white', width=0.6))), 2, 2)
-
-    fig.update_layout(showlegend=False, height=760, title='Residual Diagnostics')
-    fig.update_annotations(font=dict(family='Sora, sans-serif', size=13.5, color=TEXT_LIGHT))
-    for r, c, xt, yt in [(1, 1, 'OLS fitted', 'Residual'), (1, 2, 'ML fitted', 'Residual'),
-                         (2, 1, 'Theoretical quantiles', 'Sample quantiles'),
-                         (2, 2, 'Actual stores', 'CV prediction')]:
-        fig.update_xaxes(title_text=xt, row=r, col=c)
-        fig.update_yaxes(title_text=yt, row=r, col=c)
-    show_chart(fig)
-
-    with st.expander("📋 View full OLS regression summary"):
-        st.code(diag['ols_summary'], language='text')
-
-
-# ═══════════════════════════════════════════════════════════════
-# PAGE: CATCHMENT & OVERLAP  (trade areas + cannibalisation)
-# ═══════════════════════════════════════════════════════════════
-elif page == "📡  Catchment & Overlap":
-
-    st.markdown(f"""
-    <div class="stage-badge">◈ GEOSPATIAL</div>
-    <div class="section-title">Catchment & Cannibalisation</div>
-    <div class="section-sub">Trade-area overlap between existing stores. High saturation = crowded
-    micro-markets; isolated stores reveal genuine white space.</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="filter-panel"><div class="filter-title">⚙ Catchment Options</div>', unsafe_allow_html=True)
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        radius_m = st.slider("Catchment radius (m)", 400, 2000, 800, step=100)
-    with cc2:
-        brands_all = sorted(joined_stores['brand_category'].fillna('Other').unique().tolist())
-        brand_sel = st.multiselect("Brands", brands_all, default=brands_all)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    sdf = joined_stores.copy()
-    sdf['brand_category'] = sdf['brand_category'].fillna('Other')
-    sdf = sdf[sdf['brand_category'].isin(brand_sel)]
-    cat = catchment_analysis(sdf, radius_m)
-
-    overlap_pct = 100 * (cat['SAME_BRAND_NEAR'] > 0).mean() if len(cat) else 0
-    st.markdown(f"""
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Stores</div>
-        <div class="kpi-value">{len(cat)}</div><div class="kpi-sub">IN SELECTION</div></div>
-      <div class="kpi-card"><div class="kpi-label">Avg Neighbours</div>
-        <div class="kpi-value">{cat['NEIGHBORS'].mean():.1f}</div><div class="kpi-sub">WITHIN {radius_m} M</div></div>
-      <div class="kpi-card"><div class="kpi-label">Same-Brand Overlap</div>
-        <div class="kpi-value kpi-accent">{overlap_pct:.0f}%</div><div class="kpi-sub">SELF-CANNIBALISING</div></div>
-      <div class="kpi-card"><div class="kpi-label">Median Nearest</div>
-        <div class="kpi-value">{cat['NEAREST_KM'].median():.2f}</div><div class="kpi-sub">KM TO NEXT STORE</div></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Charts: nearest-distance distribution + saturation by brand
-    c1, c2 = st.columns(2)
-    with c1:
-        fig = go.Figure(go.Histogram(
-            x=cat['NEAREST_KM'].dropna(), nbinsx=18,
-            marker=dict(color='rgba(79,179,232,0.75)',
-                        line=dict(color=BG_DARK, width=1)),
-            hovertemplate='%{x} km<br>%{y} stores<extra></extra>'))
-        med = cat['NEAREST_KM'].median()
-        fig.add_vline(x=med, line=dict(color=MIGROS_ORANGE, dash='dash', width=1.5),
-                      annotation_text=f' median {med:.2f} km',
-                      annotation_font=dict(size=11, color=MIGROS_ORANGE))
-        fig.update_layout(title='Isolation of Existing Stores', bargap=0.06,
-                          xaxis=dict(title='Distance to nearest other store (km)'),
-                          yaxis=dict(title='Stores'))
-        show_chart(fig, height=380)
-    with c2:
-        by_brand = cat.groupby('brand_category')['SATURATION'].mean().sort_values(ascending=False)
-        brand_cols = {'Migros': MIGROS_ORANGE, 'Coop': ACCENT_GOLD, 'Denner': ACCENT_RED,
-                      'Aldi': MIGROS_TEAL, 'Lidl': ACCENT_GREEN}
-        fig = go.Figure(go.Bar(
-            x=by_brand.index, y=by_brand.values,
-            marker=dict(cornerradius=6,
-                        color=[brand_cols.get(b, '#9CA3AF') for b in by_brand.index]),
-            text=[f"{v:.1f}" for v in by_brand.values], textposition='outside',
-            textfont=dict(size=11.5, color=TEXT_MUTED),
-            hovertemplate='<b>%{x}</b><br>Mean saturation %{y:.2f}<extra></extra>'))
-        fig.update_layout(title='Average Saturation by Brand', bargap=0.45,
-                          yaxis=dict(title='Mean saturation index',
-                                     range=[0, by_brand.max() * 1.18]),
-                          xaxis=dict(title=None))
-        show_chart(fig, height=380)
-
-    # Map: stores coloured by saturation + catchment rings for Migros
-    with st.spinner("Rendering catchment map…"):
-        m_lat = sdf['latitude'].mean()
-        m_lon = sdf['longitude'].mean()
-        cmap = folium.Map(location=[m_lat, m_lon], zoom_start=12, tiles='cartodbdark_matter')
-        sat_max = max(cat['SATURATION'].max(), 1)
-        for _, r in cat.iterrows():
-            frac = r['SATURATION'] / sat_max
-            color = f'#{int(255):02x}{int(180*(1-frac)):02x}{int(60*(1-frac)):02x}'
-            if r['brand_category'] == 'Migros':
-                folium.Circle(location=[r['latitude'], r['longitude']], radius=radius_m,
-                              color=MIGROS_ORANGE, weight=1, fill=True,
-                              fill_color=MIGROS_ORANGE, fill_opacity=0.05).add_to(cmap)
-            folium.CircleMarker(
-                location=[r['latitude'], r['longitude']],
-                radius=4 + 7 * frac, color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=1,
-                tooltip=(f"{r['brand_category']} · {r['COMMUNE_NAME']}<br>"
-                         f"Neighbours: {int(r['NEIGHBORS'])} · Nearest: {r['NEAREST_KM']:.2f} km"),
-            ).add_to(cmap)
-        st_folium(cmap, height=560, use_container_width=True, returned_objects=[])
-
-    # Most cannibalised stores
-    worst = cat.sort_values('SATURATION', ascending=False).head(10)
-    rows_html = ""
-    for _, r in worst.iterrows():
-        rows_html += f"""<tr>
-          <td>{r['brand_category']}</td><td>{r['COMMUNE_NAME']}</td>
-          <td>{int(r['NEIGHBORS'])}</td><td>{int(r['SAME_BRAND_NEAR'])}</td>
-          <td>{r['NEAREST_KM']:.2f} km</td>
-          <td><b style="color:{MIGROS_ORANGE};">{r['SATURATION']:.1f}</b></td>
-        </tr>"""
-    st.markdown(f"""
-    <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
-      <div style="margin-bottom:14px;"><span class="stage-badge">MOST SATURATED STORES</span></div>
-      <table class="intel-table">
-        <thead><tr><th>BRAND</th><th>COMMUNE</th><th>NEIGHBOURS</th>
-          <th>SAME-BRAND</th><th>NEAREST</th><th>SATURATION</th></tr></thead>
-        <tbody>{rows_html}</tbody>
-      </table>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════
-# PAGE: SITE FINDER  (grid-level candidate scoring)
-# ═══════════════════════════════════════════════════════════════
-elif page == "🎯  Site Finder":
-
-    st.markdown(f"""
-    <div class="stage-badge">◈ GEOSPATIAL</div>
-    <div class="section-title">Site Finder — Point-Level Recommendations</div>
-    <div class="section-sub">Goes beyond communes: a grid of candidate locations across the canton,
-    each scored on supply gap (distance to nearest store) and local demand (density · income · model gap).</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="filter-panel"><div class="filter-title">⚙ Search Options</div>', unsafe_allow_html=True)
-    sc1, sc2, sc3 = st.columns(3)
-    with sc1:
-        focus = st.selectbox("Search area", ["Whole canton", "Top-5 opportunity communes"])
-    with sc2:
-        grid_res = st.select_slider("Grid resolution", options=[50, 70, 90, 110], value=70)
-    with sc3:
-        n_top = st.slider("Sites to highlight", 5, 20, 10)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    target = tuple(top5_ols['COMMUNE_NAME'].tolist()) if focus.startswith("Top-5") else None
-    with st.spinner("Scoring candidate sites…"):
-        grid = build_site_grid(boundaries, stores_gdf, df_filtered, grid_res, target)
-
-    if grid.empty:
-        st.warning("No candidate sites found for this selection.")
-    else:
-        best = grid.iloc[0]
-        st.markdown(f"""
-        <div class="kpi-grid">
-          <div class="kpi-card"><div class="kpi-label">Candidate Cells</div>
-            <div class="kpi-value">{len(grid):,}</div><div class="kpi-sub">SCORED</div></div>
-          <div class="kpi-card"><div class="kpi-label">Best Site Score</div>
-            <div class="kpi-value kpi-accent">{best['SITE_SCORE']:.3f}</div><div class="kpi-sub">0–1 SCALE</div></div>
-          <div class="kpi-card"><div class="kpi-label">Best Commune</div>
-            <div class="kpi-value" style="font-size:20px;">{best['COMMUNE_NAME']}</div><div class="kpi-sub">HOST</div></div>
-          <div class="kpi-card"><div class="kpi-label">Supply Gap</div>
-            <div class="kpi-value">{best['DIST_NEAREST_KM']:.2f}</div><div class="kpi-sub">KM TO NEAREST STORE</div></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        with st.spinner("Rendering site map…"):
-            smap = folium.Map(location=[grid['lat'].mean(), grid['lon'].mean()],
-                              zoom_start=12, tiles='cartodbdark_matter')
-            folium.GeoJson(boundaries, style_function=lambda _: {
-                'fillOpacity': 0, 'color': '#ffffff', 'weight': 0.4}).add_to(smap)
-            # Score cloud (cap for performance)
-            cloud = grid.head(600)
-            smax = cloud['SITE_SCORE'].max() or 1
-            for _, r in cloud.iterrows():
-                frac = r['SITE_SCORE'] / smax
-                col = f'#{int(255):02x}{int(200*(1-frac)):02x}{int(40):02x}'
-                folium.CircleMarker(location=[r['lat'], r['lon']], radius=3,
-                                    color=col, fill=True, fill_color=col,
-                                    fill_opacity=0.45, weight=0).add_to(smap)
-            # Existing stores (context)
-            for _, r in stores_gdf.iterrows():
-                folium.CircleMarker(location=[r['latitude'], r['longitude']], radius=3,
-                                    color='#4FB3E8', fill=True, fill_color='#4FB3E8',
-                                    fill_opacity=0.9, weight=0,
-                                    tooltip=f"{r.get('brand_category','?')}").add_to(smap)
-            # Top recommended sites
-            for i, (_, r) in enumerate(grid.head(n_top).iterrows()):
-                folium.Marker(
-                    location=[r['lat'], r['lon']],
-                    tooltip=f"#{i+1} · {r['COMMUNE_NAME']} · score {r['SITE_SCORE']:.3f}",
-                    icon=folium.DivIcon(html=(
-                        '<div style="background:#FF6B00;border:2px solid #fff;border-radius:50%;'
-                        'width:26px;height:26px;display:flex;align-items:center;justify-content:center;'
-                        f'color:#fff;font-size:11px;font-weight:700;">{i+1}</div>'),
-                        icon_size=(26, 26), icon_anchor=(13, 13)),
-                ).add_to(smap)
-            st_folium(smap, height=580, use_container_width=True, returned_objects=[])
-
-        rows_html = ""
-        for i, (_, r) in enumerate(grid.head(n_top).iterrows()):
-            rows_html += f"""<tr>
-              <td>{i+1}</td><td>{r['COMMUNE_NAME']}</td>
-              <td>{r['lat']:.4f}, {r['lon']:.4f}</td>
-              <td>{r['DIST_NEAREST_KM']:.2f} km</td>
-              <td>{int(r['POP_DENSITY']):,}</td>
-              <td><b style="color:{MIGROS_ORANGE};">{r['SITE_SCORE']:.3f}</b></td>
-            </tr>"""
-        st.markdown(f"""
-        <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:14px;padding:22px;overflow-x:auto;">
-          <div style="margin-bottom:14px;"><span class="stage-badge">TOP CANDIDATE SITES</span></div>
-          <table class="intel-table">
-            <thead><tr><th>#</th><th>COMMUNE</th><th>LAT, LON</th>
-              <th>NEAREST STORE</th><th>DENSITY /KM²</th><th>SITE SCORE</th></tr></thead>
-            <tbody>{rows_html}</tbody>
-          </table>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════
 # PAGE: DEMOGRAPHIC DASHBOARD
 # ═══════════════════════════════════════════════════════════════
 elif page == "📋  Demographic Dashboard":
@@ -1658,10 +1119,12 @@ elif page == "📋  Demographic Dashboard":
 
     # ── Filters ────────────────────────────────────────────────
     st.markdown(f'<div class="filter-panel"><div class="filter-title">⚙ Filters</div>', unsafe_allow_html=True)
-    dc1, dc2 = st.columns(2)
+    dc1, dc2, dc3 = st.columns(3)
     with dc1:
-        min_pop_demo = st.slider("Min Population", 0, 20000, 0, step=1000)
+        exclude_outliers = st.checkbox("Exclude outliers (Cook's D)", value=False)
     with dc2:
+        min_pop_demo = st.slider("Min Population", 0, 20000, 0, step=1000)
+    with dc3:
         highlight_top = st.selectbox("Highlight Commune", ["Champion Only"] + list(df_filtered['COMMUNE_NAME'].sort_values()))
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1673,74 +1136,61 @@ elif page == "📋  Demographic Dashboard":
     highlight_name = champ_name if highlight_top == "Champion Only" else highlight_top
 
     panels = [
-        ('POPULATION',                        MIGROS_TEAL,   'Population',            'Resident population', '~s'),
-        ('proxy_purchasing_power_median_chf', ACCENT_GOLD,   'Purchasing Power',      'Median income (CHF)', '~s'),
-        ('PCT_FOREIGNERS',                    ACCENT_PURPLE, 'Foreign Residents',     'Foreign residents (%)', '.0f'),
-        ('PCT_WORKING_AGE',                   ACCENT_GREEN,  'Working-Age Share',     'Working-age (%)', '.0f'),
-        ('PCT_SINGLE_FAMILY',                 ACCENT_RED,    'Single-Family Housing', 'Single-family (%)', '.0f'),
-        ('POP_DENSITY',                       '#60A5FA',     'Population Density',    'People per km²', '~s'),
+        ('POPULATION',                       '#4ECDC4', 'Population vs Supermarket Count',     'Resident Population'),
+        ('PCT_WORKING_AGE',                  '#45B7D1', 'Working-Age Share vs Supermarkets',   'Working-Age (%)'),
+        ('PCT_SINGLE_FAMILY',                '#96CEB4', 'Single-Family Housing vs Supermarkets','Single-Family (%)'),
+        ('PCT_FOREIGNERS',                   '#DDA0DD', 'Foreign-Resident Share vs Supermarkets','Foreign Residents (%)'),
+        ('proxy_purchasing_power_median_chf','#FFB347', 'Purchasing Power vs Supermarkets',    'Median Income (CHF)'),
     ]
 
-    def factor_panel(xcol, color, title, xlab, tickfmt):
-        d = df_demo.dropna(subset=[xcol])
-        fig = go.Figure()
-        # OLS trendline
-        if len(d) > 2 and d[xcol].nunique() > 1:
-            k, b0 = np.polyfit(d[xcol], d['STORE_COUNT'], 1)
-            xs = np.linspace(d[xcol].min(), d[xcol].max(), 50)
-            fig.add_trace(go.Scatter(x=xs, y=k * xs + b0, mode='lines', hoverinfo='skip',
-                                     line=dict(color='rgba(255,107,0,0.85)', width=2)))
-        fig.add_trace(go.Scatter(
-            x=d[xcol], y=d['STORE_COUNT'], mode='markers', customdata=d['COMMUNE_NAME'],
-            marker=dict(color=color, size=10, opacity=0.78,
-                        line=dict(color='white', width=0.6)),
-            hovertemplate='<b>%{customdata}</b><br>' + xlab + ' %{x:,.1f}<br>'
-                          'Stores %{y:.0f}<extra></extra>'))
-        h = d[d['COMMUNE_NAME'] == highlight_name]
-        if not h.empty:
-            fig.add_trace(go.Scatter(
-                x=h[xcol], y=h['STORE_COUNT'], mode='markers', customdata=h['COMMUNE_NAME'],
-                marker=dict(color=MIGROS_ORANGE, size=20, symbol='star',
-                            line=dict(color='white', width=1.4)),
-                hovertemplate='<b>★ %{customdata}</b><br>' + xlab + ' %{x:,.1f}<br>'
-                              'Stores %{y:.0f}<extra></extra>'))
-        fig.update_layout(title=title, showlegend=False,
-                          xaxis=dict(title=xlab, tickformat=tickfmt),
-                          yaxis=dict(title='Supermarkets'))
-        return fig
+    fig, axes = plt.subplots(3, 2, figsize=(16, 18))
+    fig.suptitle('Geneva Retail Analytics  —  5-Factor Socio-Demographic Dashboard', fontsize=14, y=1.01)
+    positions = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0)]
 
-    for i in range(0, len(panels), 2):
-        cols = st.columns(2)
-        for col, panel in zip(cols, panels[i:i+2]):
-            with col:
-                show_chart(factor_panel(*panel), height=360)
+    for (r, c), (xcol, color, title, xlab) in zip(positions, panels):
+        ax = axes[r][c]
+        sns.regplot(ax=ax, x=xcol, y='STORE_COUNT', data=df_demo, color=color,
+                    scatter_kws={'alpha': 0.65, 's': 45, 'zorder': 3},
+                    line_kws={'color': MIGROS_ORANGE, 'lw': 2.2, 'zorder': 2})
+        h_row = df_demo[df_demo['COMMUNE_NAME'] == highlight_name]
+        if not h_row.empty:
+            ax.scatter(h_row[xcol], h_row['STORE_COUNT'],
+                       color=MIGROS_ORANGE, s=220, zorder=10, edgecolors='white', lw=1.5,
+                       marker='*', label=f'★ {highlight_name}')
+            ax.legend(fontsize=8)
+        ax.set_title(title)
+        ax.set_xlabel(xlab, fontsize=9)
+        ax.set_ylabel('Number of Supermarkets', fontsize=9)
 
-    # Highlight summary card
+    ax_box = axes[2][1]
+    ax_box.set_facecolor(BG_DARK)
+    ax_box.axis('off')
+    for sp in ax_box.spines.values():
+        sp.set_visible(True)
+        sp.set_color(MIGROS_ORANGE)
+        sp.set_linewidth(1)
+
     h_data = df_demo[df_demo['COMMUNE_NAME'] == highlight_name]
     if not h_data.empty:
         h = h_data.iloc[0]
-        stats_html = ""
-        for lbl, val, col in [
-            ('Population',  f"{int(h['POPULATION']):,}",                          TEXT_LIGHT),
-            ('Stores',      f"{int(h['STORE_COUNT'])}",                           TEXT_LIGHT),
-            ('OLS Pred',    f"{h['PREDICTED_STORES']:.2f}",                       MIGROS_TEAL),
-            ('Gap',         f"{h['OPPORTUNITY_SCORE']:+.2f}",                     MIGROS_ORANGE),
-            ('Income CHF',  f"{int(h['proxy_purchasing_power_median_chf']):,}",    TEXT_LIGHT),
-            ('Foreign %',   f"{h['PCT_FOREIGNERS']:.1f}%",                        ACCENT_PURPLE),
-        ]:
-            stats_html += f"""
-            <div class="champion-stat">
-              <div class="champion-stat-label">{lbl}</div>
-              <div class="champion-stat-value" style="color:{col};font-size:17px;">{val}</div>
-            </div>"""
-        st.markdown(f"""
-        <div style="background:{CARD_BG};border:1px solid rgba(255,107,0,0.35);border-radius:16px;
-             padding:24px;margin-top:6px;">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:{ORANGE_LIGHT};
-               letter-spacing:2.5px;text-transform:uppercase;margin-bottom:14px;">★ Highlighted — {highlight_name}</div>
-          <div class="champion-stats" style="justify-content:flex-start;">{stats_html}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        entries = [
+            ('HIGHLIGHTED',   highlight_name,                                              MIGROS_ORANGE, 14, 'bold'),
+            ('Population',    f"{int(h['POPULATION']):,}",                                TEXT_LIGHT,    11, 'normal'),
+            ('Stores',        f"{int(h['STORE_COUNT'])}",                                 TEXT_LIGHT,    11, 'normal'),
+            ('Predicted',     f"{h['PREDICTED_STORES']:.2f}",                             TEXT_LIGHT,    11, 'normal'),
+            ('Opportunity',   f"+{h['OPPORTUNITY_SCORE']:.2f}",                           MIGROS_ORANGE, 13, 'bold'),
+            ('Income (CHF)',  f"{int(h['proxy_purchasing_power_median_chf']):,}",          TEXT_LIGHT,    11, 'normal'),
+            ('Foreign %',     f"{h['PCT_FOREIGNERS']:.1f}%",                              MIGROS_TEAL,   11, 'normal'),
+        ]
+        y_pos = 0.90
+        for lbl, val, col, sz, wt in entries:
+            ax_box.text(0.07, y_pos, f'{lbl}:', fontsize=9, color=TEXT_MUTED, transform=ax_box.transAxes, va='top')
+            ax_box.text(0.55, y_pos, val, fontsize=sz, color=col, fontweight=wt, transform=ax_box.transAxes, va='top')
+            y_pos -= 0.12
+
+    plt.tight_layout(pad=1.8)
+    st.pyplot(fig)
+    plt.close()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1760,8 +1210,7 @@ elif page == "🗺️  Interactive Map":
     with mc1:
         show_stores = st.checkbox("Show store pins", value=True)
     with mc2:
-        all_brands = sorted(joined_stores['brand_category'].fillna('Other').unique().tolist())
-        brand_filter = st.multiselect("Filter Brands", all_brands, default=all_brands)
+        brand_filter = st.multiselect("Filter Brands", ["Coop", "Migros", "other"], default=["Coop", "Migros", "other"])
     with mc3:
         map_zoom = st.slider("Initial Zoom", 10, 14, 12)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1834,16 +1283,13 @@ elif page == "🗺️  Interactive Map":
             ).add_to(geomap)
 
         if show_stores:
-            brand_colors = {'Coop': '#FFD700', 'Migros': '#FF3B30', 'Denner': '#FF8A3D',
-                            'Aldi': '#4FB3E8', 'Lidl': '#34D399', 'Other': '#9CA3AF'}
+            brand_colors = {'Coop': '#FFD700', 'Migros': '#FF0000', 'other': '#3498db'}
             for _, row in joined_stores.iterrows():
-                brand = row.get('brand_category', 'Other')
-                if pd.isna(brand):
-                    brand = 'Other'
+                brand = row.get('brand_category', 'other')
                 if brand not in brand_filter:
                     continue
                 if row['COMMUNE_NAME'] in df_filtered['COMMUNE_NAME'].values:
-                    bc = brand_colors.get(brand, brand_colors['Other'])
+                    bc = brand_colors.get(brand, brand_colors['other'])
                     folium.CircleMarker(
                         location=[row['latitude'], row['longitude']],
                         radius=5,

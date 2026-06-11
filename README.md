@@ -26,7 +26,6 @@ Migros-Location-Optimizer/
 ├── data/
 │   ├── geneva_supermarkets_data_with_address.csv
 │   ├── OCS_POPBATLOG_COMMUNE.csv           # Commune demographics (OCS, ; separated)
-│   ├── geneva_communes_boundaries.geojson  # Static commune boundaries (45 communes)
 │   ├── switzerland.geojson
 │   └── finance/
 │       ├── geneva_purchasing_power_proxy_all_years.csv
@@ -44,12 +43,12 @@ Migros-Location-Optimizer/
 | `data/finance/geneva_purchasing_power_proxy_all_years.csv` | Purchasing-power proxy per commune per year |
 | `switzerland.geojson` | Country boundary geometry |
 
-Commune boundaries ship statically in `data/geneva_communes_boundaries.geojson`
-(45 communes, EPSG:4326) — no live OpenStreetMap/Nominatim call at startup, so the
-dashboard boots in seconds and never hangs on external geo APIs.
+Commune boundaries are fetched live from OpenStreetMap via **OSMnx**
+(`Canton of Geneva, Switzerland`, `admin_level=8`).
 
-> **Note:** `app/app.py` prefers the files in the local `data/` folder and falls back
-> to this repo's GitHub raw URLs, so the data files must stay committed to the repo.
+> **Note:** `app/app.py` loads the CSVs from this repo's `data/` folder over GitHub raw
+> URLs, so the dashboard runs without the files being present locally — but the files
+> must stay committed to the repo for the deployed app to work.
 
 ## Running locally
 
