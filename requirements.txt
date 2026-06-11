@@ -2,12 +2,10 @@ streamlit
 pandas
 numpy
 geopandas
-osmnx
+shapely
 statsmodels
 scikit-learn
 scipy
-shapely
+plotly
 folium
 streamlit-folium
-matplotlib
-seaborn
