@@ -2,17 +2,17 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import geopandas as gpd
-import osmnx as ox
 import statsmodels.api as sm
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import KFold, cross_val_predict
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from scipy import stats
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import seaborn as sns
+import plotly.graph_objects as go
+import plotly.io as pio
+from plotly.subplots import make_subplots
 import folium
 from streamlit_folium import st_folium
+import os
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -468,28 +468,60 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── MATPLOTLIB STYLE ──────────────────────────────────────────
-sns.set_theme(style='darkgrid')
-plt.rcParams.update({
-    'figure.facecolor': BG_DARK, 'axes.facecolor': '#101522',
-    'axes.edgecolor': BORDER, 'axes.labelcolor': TEXT_LIGHT,
-    'xtick.color': TEXT_MUTED, 'ytick.color': TEXT_MUTED,
-    'text.color': TEXT_LIGHT, 'grid.color': '#1B2433',
-    'grid.linewidth': 0.6, 'font.family': 'DejaVu Sans',
-    'axes.titlecolor': TEXT_LIGHT, 'axes.titleweight': 'bold',
-    'axes.titlesize': 13, 'axes.titlepad': 14,
-    'axes.spines.top': False, 'axes.spines.right': False,
-    'legend.facecolor': CARD_BG, 'legend.edgecolor': BORDER,
-    'legend.labelcolor': TEXT_LIGHT, 'legend.framealpha': 0.9,
-})
+# ─── PLOTLY THEME ──────────────────────────────────────────────
+ACCENT_PURPLE = '#A78BFA'
+ACCENT_GREEN  = '#34D399'
+ACCENT_RED    = '#F87171'
+ACCENT_GOLD   = '#FBBF24'
+GRID          = 'rgba(148,163,184,0.10)'
+
+_axis = dict(
+    gridcolor=GRID, zerolinecolor='rgba(148,163,184,0.22)',
+    linecolor='rgba(148,163,184,0.18)',
+    tickfont=dict(color=TEXT_MUTED, size=11.5),
+    title=dict(font=dict(color=TEXT_MUTED, size=12)),
+)
+pio.templates['migros_dark'] = go.layout.Template(layout=go.Layout(
+    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+    font=dict(family='Inter, sans-serif', color=TEXT_LIGHT, size=13),
+    title=dict(font=dict(family='Sora, sans-serif', size=16, color=TEXT_LIGHT),
+               x=0.01, xanchor='left'),
+    xaxis=_axis, yaxis=_axis,
+    legend=dict(bgcolor='rgba(18,24,38,0.85)', bordercolor=BORDER, borderwidth=1,
+                font=dict(size=11.5, color=TEXT_LIGHT)),
+    hoverlabel=dict(bgcolor='#1A2232', bordercolor='rgba(255,107,0,0.55)',
+                    font=dict(family='Inter, sans-serif', size=12.5, color=TEXT_LIGHT)),
+    margin=dict(l=12, r=12, t=56, b=12),
+    colorway=[MIGROS_ORANGE, MIGROS_TEAL, ACCENT_PURPLE, ACCENT_GREEN, ACCENT_RED, ACCENT_GOLD],
+))
+pio.templates.default = 'migros_dark'
+PLOTLY_CFG = {'displayModeBar': False}
+
+
+def show_chart(fig, height=None):
+    if height:
+        fig.update_layout(height=height)
+    try:
+        st.plotly_chart(fig, width='stretch', config=PLOTLY_CFG)
+    except TypeError:  # older Streamlit
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
 
 # ─── DATA LOADING (CACHED) ─────────────────────────────────────
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+DATA_URL = 'https://raw.githubusercontent.com/so-rn/Migros-Location-Optimizer/main/data/'
+
+
+def _data_path(rel):
+    """Prefer the file bundled in the repo; fall back to the GitHub raw URL."""
+    local = os.path.join(DATA_DIR, rel)
+    return local if os.path.exists(local) else DATA_URL + rel
+
+
 @st.cache_data(show_spinner=False)
 def load_data():
-    BASE_URL   = 'https://raw.githubusercontent.com/so-rn/Migros-Location-Optimizer/main/data/'
-    URL_STORES = BASE_URL + 'geneva_supermarkets_data_with_address.csv'
-    URL_POP    = BASE_URL + 'OCS_POPBATLOG_COMMUNE.csv'
-    URL_POWER  = BASE_URL + 'finance/geneva_purchasing_power_proxy_all_years.csv'
+    URL_STORES = _data_path('geneva_supermarkets_data_with_address.csv')
+    URL_POP    = _data_path('OCS_POPBATLOG_COMMUNE.csv')
+    URL_POWER  = _data_path('finance/geneva_purchasing_power_proxy_all_years.csv')
     df_stores = pd.read_csv(URL_STORES)
     stores_gdf = gpd.GeoDataFrame(
         df_stores,
@@ -505,20 +537,16 @@ def load_data():
 
 @st.cache_data(show_spinner=False)
 def load_boundaries():
-    boundaries = ox.features_from_place(
-        'Canton of Geneva, Switzerland', tags={'admin_level': '8'}
-    )
-    boundaries = (
-        boundaries[boundaries.geometry.type.isin(['Polygon', 'MultiPolygon'])]
-        .reset_index()[['name', 'geometry']]
-        .rename(columns={'name': 'COMMUNE_NAME'})
-        .to_crs(epsg=4326)
-    )
-    return boundaries
+    """Commune boundaries from the bundled GeoJSON — instant startup, no live
+    OSM/Nominatim call (which used to hang the whole app on Streamlit Cloud)."""
+    boundaries = gpd.read_file(_data_path('geneva_communes_boundaries.geojson'))
+    return boundaries[['COMMUNE_NAME', 'geometry']].set_crs(epsg=4326, allow_override=True)
 
 @st.cache_data(show_spinner=False)
 def build_master(_stores_gdf, _df_pop, _df_power_2022, _boundaries):
     joined = gpd.sjoin(_stores_gdf, _boundaries, how='inner', predicate='intersects')
+    # A store sitting exactly on a shared border matches two polygons — keep one
+    joined = joined[~joined.index.duplicated(keep='first')]
     store_counts = joined.groupby('COMMUNE_NAME').size().reset_index(name='STORE_COUNT')
     df_master = (
         _boundaries
@@ -790,7 +818,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ─── LOAD DATA ─────────────────────────────────────────────────
-with st.spinner("Initialising intelligence engine…"):
+with st.spinner("Loading data & fitting models…"):
     try:
         stores_gdf, df_pop, df_power_2022 = load_data()
         boundaries = load_boundaries()
@@ -954,24 +982,28 @@ elif page == "📊  Stage 1 — Population":
     if top20_f.empty:
         st.warning("No communes match the current filters.")
     else:
-        fig, ax = plt.subplots(figsize=(13, max(5, len(top20_f) * 0.42)))
-        colors = [MIGROS_ORANGE if i == 0 else MIGROS_TEAL for i in range(len(top20_f))]
-        bars = ax.barh(top20_f['COMMUNE_NAME'], top20_f['POPULATION'], color=colors, edgecolor='none', height=0.65)
-        ax.invert_yaxis()
-        ax.set_xlabel('Resident Population', fontsize=11)
-        ax.set_title('Stage 1  —  Top Communes by Population')
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x/1000:.0f}K'))
-        for bar, val in zip(bars, top20_f['POPULATION']):
-            ax.text(val + 50, bar.get_y() + bar.get_height() / 2,
-                    f'{val:,}', va='center', ha='left', fontsize=8, color=TEXT_MUTED)
-        legend_patches = [
-            mpatches.Patch(color=MIGROS_ORANGE, label='#1 Largest'),
-            mpatches.Patch(color=MIGROS_TEAL,   label='Top 20'),
-        ]
-        ax.legend(handles=legend_patches, loc='lower right')
-        plt.tight_layout(pad=1.5)
-        st.pyplot(fig)
-        plt.close()
+        d = top20_f.sort_values('POPULATION', ascending=True)
+        colors = [MIGROS_ORANGE if n == d['POPULATION'].idxmax() else 'rgba(79,179,232,0.75)'
+                  for n in d.index]
+        fig = go.Figure(go.Bar(
+            x=d['POPULATION'], y=d['COMMUNE_NAME'], orientation='h',
+            marker=dict(color=colors, cornerradius=6),
+            text=[f"{v:,}" for v in d['POPULATION']],
+            textposition='outside', textfont=dict(size=11, color=TEXT_MUTED),
+            customdata=np.stack([d['STORE_COUNT'], d['PCT_FOREIGNERS'],
+                                 d['proxy_purchasing_power_median_chf']], axis=-1),
+            hovertemplate='<b>%{y}</b><br>Population %{x:,}<br>'
+                          'Stores %{customdata[0]:.0f} · Foreign %{customdata[1]:.1f}%%<br>'
+                          'Income CHF %{customdata[2]:,.0f}<extra></extra>',
+        ))
+        fig.update_layout(
+            title='Top Communes by Population',
+            xaxis=dict(title='Resident population', tickformat='~s'),
+            yaxis=dict(title=None), bargap=0.32,
+            height=max(380, len(d) * 34 + 110),
+        )
+        fig.update_xaxes(range=[0, d['POPULATION'].max() * 1.14])
+        show_chart(fig)
 
         st.markdown(f"<div style='height:20px'></div>", unsafe_allow_html=True)
         display_cols = top20_f[['RANK', 'COMMUNE_NAME', 'POPULATION', 'STORE_COUNT',
@@ -1078,37 +1110,35 @@ elif page == "🧮  Stage 2 — Scoring":
     dim_labels  = [f'Income ({w_income}%)', f'Foreign % ({w_foreign}%)', f'Working Age ({w_age}%)', f'Urban Density ({w_urban}%)']
     dim_colors  = [MIGROS_ORANGE, MIGROS_TEAL, '#A78BFA', '#34D399']
     dim_weights_list = [w_income/100, w_foreign/100, w_age/100, w_urban/100]
-    pal5 = [MIGROS_ORANGE, MIGROS_TEAL, '#A78BFA', '#34D399', '#F87171']
+    c1, c2 = st.columns(2)
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle('Stage 2  —  Socio-Economic Multi-Factor Analysis', fontsize=14, y=1.02)
+    with c1:
+        d = s2_data.sort_values('COMPOSITE_SCORE', ascending=True)
+        colors = [MIGROS_ORANGE if v == d['COMPOSITE_SCORE'].max()
+                  else 'rgba(79,179,232,0.7)' for v in d['COMPOSITE_SCORE']]
+        fig = go.Figure(go.Bar(
+            x=d['COMPOSITE_SCORE'], y=d['COMMUNE_NAME'], orientation='h',
+            marker=dict(color=colors, cornerradius=6),
+            text=[f"{v:.3f}" for v in d['COMPOSITE_SCORE']],
+            textposition='outside', textfont=dict(size=11.5, color=TEXT_LIGHT),
+            hovertemplate='<b>%{y}</b><br>Composite score %{x:.4f}<extra></extra>',
+        ))
+        fig.update_layout(title='Composite Score', bargap=0.35,
+                          xaxis=dict(title='Score (0–1)',
+                                     range=[0, max(0.01, d['COMPOSITE_SCORE'].max()) * 1.22]),
+                          yaxis=dict(title=None))
+        show_chart(fig, height=400)
 
-    ax1 = axes[0]
-    bars = ax1.barh(s2_data['COMMUNE_NAME'], s2_data['COMPOSITE_SCORE'],
-                    color=pal5[:len(s2_data)], height=0.6, edgecolor='none')
-    ax1.invert_yaxis()
-    ax1.set_xlabel('Composite Score (0–1)', fontsize=10)
-    ax1.set_title('Composite Socio-Economic Score')
-    for bar, sc in zip(bars, s2_data['COMPOSITE_SCORE']):
-        ax1.text(sc + 0.005, bar.get_y() + bar.get_height() / 2,
-                 f'{sc:.3f}', va='center', fontsize=10, color=TEXT_LIGHT)
-
-    ax2 = axes[1]
-    x = np.arange(len(s2_data))
-    bottom = np.zeros(len(s2_data))
-    for dim, lbl, col, w in zip(dims, dim_labels, dim_colors, dim_weights_list):
-        vals = s2_data[dim].values * w
-        ax2.bar(x, vals, bottom=bottom, label=lbl, color=col, edgecolor='none', width=0.55, alpha=0.9)
-        bottom += vals
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(s2_data['COMMUNE_NAME'], rotation=22, ha='right', fontsize=9)
-    ax2.set_ylabel('Weighted Score')
-    ax2.set_title('Score Breakdown by Dimension')
-    ax2.legend(loc='upper right', fontsize=8)
-
-    plt.tight_layout(pad=1.5)
-    st.pyplot(fig)
-    plt.close()
+    with c2:
+        fig = go.Figure()
+        for dim, lbl, col, w in zip(dims, dim_labels, dim_colors, dim_weights_list):
+            fig.add_bar(name=lbl, x=s2_data['COMMUNE_NAME'], y=s2_data[dim] * w,
+                        marker=dict(color=col, cornerradius=4),
+                        hovertemplate='<b>%{x}</b><br>' + lbl + ': %{y:.3f}<extra></extra>')
+        fig.update_layout(title='Breakdown by Dimension', barmode='stack', bargap=0.42,
+                          yaxis=dict(title='Weighted score'), xaxis=dict(title=None),
+                          legend=dict(orientation='h', y=1.06, x=0))
+        show_chart(fig, height=400)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     rows_html = ""
@@ -1152,23 +1182,21 @@ elif page == "📈  Stage 3 — OLS vs ML":
     """, unsafe_allow_html=True)
 
     # ── Model-agreement comparison (OLS · ML · Blended) ─────────
-    comp = top5_ols.sort_values('BLENDED_OPPORTUNITY', ascending=False).reset_index(drop=True)
-    figc, axc = plt.subplots(figsize=(13, 5.2))
-    yb = np.arange(len(comp))
-    h = 0.26
-    axc.barh(yb - h, comp['OPPORTUNITY_SCORE'], height=h, color=MIGROS_TEAL, label='OLS gap')
-    axc.barh(yb,      comp['ML_OPPORTUNITY'],   height=h, color='#A78BFA', label='ML gap')
-    axc.barh(yb + h,  comp['BLENDED_OPPORTUNITY'], height=h, color=MIGROS_ORANGE, label='Blended')
-    axc.set_yticks(yb)
-    axc.set_yticklabels(comp['COMMUNE_NAME'])
-    axc.invert_yaxis()
-    axc.axvline(0, color='#444', lw=1, ls='--', alpha=0.6)
-    axc.set_xlabel('Opportunity Gap  (predicted − actual stores)')
-    axc.set_title('Model Agreement on Under-supply')
-    axc.legend(loc='lower right', fontsize=9)
-    plt.tight_layout(pad=1.2)
-    st.pyplot(figc)
-    plt.close()
+    comp = top5_ols.sort_values('BLENDED_OPPORTUNITY', ascending=True).reset_index(drop=True)
+    fig = go.Figure()
+    for col, label, color in [('OPPORTUNITY_SCORE', 'OLS gap', MIGROS_TEAL),
+                              ('ML_OPPORTUNITY', 'ML gap', ACCENT_PURPLE),
+                              ('BLENDED_OPPORTUNITY', 'Blended', MIGROS_ORANGE)]:
+        fig.add_bar(name=label, y=comp['COMMUNE_NAME'], x=comp[col], orientation='h',
+                    marker=dict(color=color, cornerradius=5),
+                    hovertemplate='<b>%{y}</b><br>' + label + ': %{x:+.2f}<extra></extra>')
+    fig.add_vline(x=0, line=dict(color='rgba(148,163,184,0.35)', dash='dash', width=1))
+    fig.update_layout(title='Model Agreement on Under-supply', barmode='group',
+                      bargap=0.30, bargroupgap=0.08,
+                      xaxis=dict(title='Opportunity gap (predicted − actual stores)'),
+                      yaxis=dict(title=None),
+                      legend=dict(orientation='h', y=1.08, x=0))
+    show_chart(fig, height=420)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -1189,55 +1217,61 @@ elif page == "📈  Stage 3 — OLS vs ML":
     elif sort_by == "Predicted Stores ↓":
         top5_view = top5_view.sort_values('PREDICTED_STORES', ascending=False)
 
-    pal3 = [MIGROS_ORANGE if i == 0 else MIGROS_TEAL for i in range(len(top5_view))]
+    c1, c2 = st.columns(2)
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle('Stage 3  —  OLS Regression: Market Opportunity Analysis', fontsize=14, y=1.02)
+    with c1:
+        d = top5_view.sort_values('OPPORTUNITY_SCORE', ascending=True)
+        colors = [MIGROS_ORANGE if v == d['OPPORTUNITY_SCORE'].max()
+                  else 'rgba(79,179,232,0.7)' for v in d['OPPORTUNITY_SCORE']]
+        fig = go.Figure(go.Bar(
+            x=d['OPPORTUNITY_SCORE'], y=d['COMMUNE_NAME'], orientation='h',
+            marker=dict(color=colors, cornerradius=6),
+            text=[f"{v:+.2f}" for v in d['OPPORTUNITY_SCORE']],
+            textposition='outside', textfont=dict(size=11.5, color=TEXT_LIGHT),
+            hovertemplate='<b>%{y}</b><br>OLS gap %{x:+.2f}<extra></extra>',
+        ))
+        fig.add_vline(x=0, line=dict(color='rgba(148,163,184,0.35)', dash='dash', width=1))
+        fig.update_layout(title='OLS Opportunity Gap', bargap=0.35,
+                          xaxis=dict(title='Predicted − actual stores'),
+                          yaxis=dict(title=None))
+        show_chart(fig, height=400)
 
-    ax1 = axes[0]
-    ax1.barh(top5_view['COMMUNE_NAME'], top5_view['OPPORTUNITY_SCORE'],
-             color=pal3, height=0.6, edgecolor='none')
-    ax1.invert_yaxis()
-    ax1.set_xlabel('Opportunity Gap (Predicted − Actual Stores)', fontsize=10)
-    ax1.set_title('Opportunity Gap by Commune')
-    ax1.axvline(0, color='#444', linewidth=1, linestyle='--', alpha=0.6)
-    for i, (_, row) in enumerate(top5_view.iterrows()):
-        sign = '+' if row['OPPORTUNITY_SCORE'] >= 0 else ''
-        ax1.text(row['OPPORTUNITY_SCORE'] + 0.015, i,
-                 f"{sign}{row['OPPORTUNITY_SCORE']:.2f}", va='center', ha='left',
-                 fontsize=10, color=TEXT_LIGHT)
-
-    ax2 = axes[1]
-    if not top5_view.empty:
-        all_vals = list(top5_view['STORE_COUNT']) + list(top5_view['PREDICTED_STORES'].dropna())
-        lim_max = max(all_vals) + 0.9
-        lim_min = max(0, min(all_vals) - 0.3)
-        ax2.plot([lim_min, lim_max], [lim_min, lim_max], color='#555', linestyle='--', lw=1.2,
-                 label='Perfect equilibrium', zorder=1)
-        for i, (_, row) in enumerate(top5_view.iterrows()):
-            c = MIGROS_ORANGE if i == 0 else MIGROS_TEAL
-            ax2.scatter(row['STORE_COUNT'], row['PREDICTED_STORES'],
-                        color=c, s=220, zorder=5, edgecolors='white', lw=1)
-            ax2.annotate(row['COMMUNE_NAME'], (row['STORE_COUNT'], row['PREDICTED_STORES']),
-                         textcoords='offset points', xytext=(9, 4), fontsize=8.5, color=TEXT_LIGHT)
-        ax2.set_xlim(lim_min, lim_max)
-        ax2.set_ylim(lim_min, lim_max)
-        ax2.set_xlabel('Actual Stores')
-        ax2.set_ylabel('Model-Predicted Stores')
-        ax2.set_title('Actual vs Predicted Stores')
-        ax2.legend(fontsize=8)
-        ax2.text(lim_min + 0.05, lim_max - 0.3, 'Above line = under-served',
-                 fontsize=8, color=MIGROS_ORANGE, style='italic')
-
-    plt.tight_layout(pad=1.5)
-    st.pyplot(fig)
-    plt.close()
+    with c2:
+        if not top5_view.empty:
+            vals = list(top5_view['STORE_COUNT']) + list(top5_view['PREDICTED_STORES'].dropna())
+            lim_lo, lim_hi = max(0, min(vals) - 0.4), max(vals) + 0.9
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=[lim_lo, lim_hi], y=[lim_lo, lim_hi], mode='lines',
+                line=dict(color='rgba(148,163,184,0.4)', dash='dash', width=1.4),
+                name='Equilibrium', hoverinfo='skip'))
+            best = top5_view['BLENDED_OPPORTUNITY'].idxmax()
+            err = (top5_view['OLS_PRED_HI'] - top5_view['PREDICTED_STORES']).abs()
+            fig.add_trace(go.Scatter(
+                x=top5_view['STORE_COUNT'], y=top5_view['PREDICTED_STORES'],
+                mode='markers+text', text=top5_view['COMMUNE_NAME'],
+                textposition='middle right', textfont=dict(size=11, color=TEXT_MUTED),
+                error_y=dict(type='data', array=err, visible=True,
+                             color='rgba(148,163,184,0.35)', thickness=1, width=4),
+                marker=dict(
+                    size=16, line=dict(color='white', width=1.2),
+                    color=[MIGROS_ORANGE if i == best else MIGROS_TEAL
+                           for i in top5_view.index],
+                    symbol=['star' if i == best else 'circle' for i in top5_view.index]),
+                name='Commune',
+                hovertemplate='<b>%{text}</b><br>Actual %{x:.0f} · Predicted %{y:.2f}'
+                              '<extra></extra>'))
+            fig.add_annotation(x=lim_lo + (lim_hi-lim_lo)*0.04, y=lim_hi - (lim_hi-lim_lo)*0.06,
+                               text='<i>Above line = under-served</i>', showarrow=False,
+                               font=dict(size=11, color=MIGROS_ORANGE), xanchor='left')
+            fig.update_layout(title='Actual vs Predicted (with 95% CI)',
+                              xaxis=dict(title='Actual stores', range=[lim_lo, lim_hi]),
+                              yaxis=dict(title='OLS-predicted stores', range=[lim_lo, lim_hi]),
+                              showlegend=False)
+            show_chart(fig, height=400)
 
     with st.expander("📋 View OLS Regression Summary"):
-        X_f = sm.add_constant(df_filtered[['POPULATION', 'proxy_purchasing_power_median_chf']])
-        y_f = df_filtered['STORE_COUNT']
-        model = sm.OLS(y_f, X_f).fit()
-        st.code(str(model.summary()), language='text')
+        st.code(diag['ols_summary'], language='text')
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     def _gap(v):
@@ -1331,51 +1365,68 @@ elif page == "🤖  Model Lab":
     # ── Feature importance ─────────────────────────────────────
     imp = diag['importances'].copy()
     imp['label'] = imp['feature'].map(ML_FEATURE_LABELS).fillna(imp['feature'])
-    fig, ax = plt.subplots(figsize=(13, max(4, len(imp) * 0.42)))
-    ax.barh(imp['label'], imp['importance'], color=MIGROS_ORANGE, height=0.62, edgecolor='none')
-    ax.invert_yaxis()
-    ax.set_xlabel('Relative importance')
-    ax.set_title('What Drives the ML Store-Demand Model')
-    for y, v in enumerate(imp['importance']):
-        ax.text(v + 0.005, y, f'{v:.2f}', va='center', fontsize=9, color=TEXT_MUTED)
-    plt.tight_layout(pad=1.2)
-    st.pyplot(fig)
-    plt.close()
+    imp = imp.sort_values('importance', ascending=True)
+    frac = imp['importance'] / max(imp['importance'].max(), 1e-9)
+    fig = go.Figure(go.Bar(
+        x=imp['importance'], y=imp['label'], orientation='h',
+        marker=dict(cornerradius=6,
+                    color=[f'rgba(255,107,0,{0.35 + 0.65*f:.2f})' for f in frac]),
+        text=[f"{v:.2f}" for v in imp['importance']],
+        textposition='outside', textfont=dict(size=11, color=TEXT_MUTED),
+        hovertemplate='<b>%{y}</b><br>Importance %{x:.3f}<extra></extra>',
+    ))
+    fig.update_layout(title='What Drives the ML Store-Demand Model',
+                      xaxis=dict(title='Relative importance',
+                                 range=[0, imp['importance'].max() * 1.15]),
+                      yaxis=dict(title=None), bargap=0.32,
+                      height=max(360, len(imp) * 36 + 110))
+    show_chart(fig)
 
-    # ── Residual diagnostics ───────────────────────────────────
+    # ── Residual diagnostics (2×2 interactive grid) ─────────────
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle('Residual Diagnostics', fontsize=14, y=1.0)
+    names = df_filtered['COMMUNE_NAME']
+    fig = make_subplots(rows=2, cols=2, vertical_spacing=0.14, horizontal_spacing=0.09,
+                        subplot_titles=('OLS — Fitted vs Residual', 'ML — Fitted vs Residual',
+                                        'OLS Residuals — Normal Q-Q',
+                                        'ML — Actual vs Out-of-Sample'))
+    _pt = '<b>%{customdata}</b><br>x %{x:.2f} · y %{y:.2f}<extra></extra>'
 
-    a = axes[0][0]
-    a.scatter(df_filtered['PREDICTED_STORES'], df_filtered['OLS_RESID'],
-              color=MIGROS_TEAL, s=55, alpha=0.8, edgecolors='white', lw=0.5)
-    a.axhline(0, color=MIGROS_ORANGE, ls='--', lw=1.2)
-    a.set_xlabel('OLS fitted'); a.set_ylabel('Residual'); a.set_title('OLS — Fitted vs Residual')
+    fig.add_trace(go.Scatter(x=df_filtered['PREDICTED_STORES'], y=df_filtered['OLS_RESID'],
+                             mode='markers', customdata=names, hovertemplate=_pt,
+                             marker=dict(color=MIGROS_TEAL, size=9, opacity=0.85,
+                                         line=dict(color='white', width=0.6))), 1, 1)
+    fig.add_hline(y=0, line=dict(color=MIGROS_ORANGE, dash='dash', width=1.2), row=1, col=1)
 
-    b = axes[0][1]
-    b.scatter(df_filtered['ML_PRED'], df_filtered['ML_RESID'],
-              color='#A78BFA', s=55, alpha=0.8, edgecolors='white', lw=0.5)
-    b.axhline(0, color=MIGROS_ORANGE, ls='--', lw=1.2)
-    b.set_xlabel('ML fitted'); b.set_ylabel('Residual'); b.set_title('ML — Fitted vs Residual')
+    fig.add_trace(go.Scatter(x=df_filtered['ML_PRED'], y=df_filtered['ML_RESID'],
+                             mode='markers', customdata=names, hovertemplate=_pt,
+                             marker=dict(color=ACCENT_PURPLE, size=9, opacity=0.85,
+                                         line=dict(color='white', width=0.6))), 1, 2)
+    fig.add_hline(y=0, line=dict(color=MIGROS_ORANGE, dash='dash', width=1.2), row=1, col=2)
 
-    c = axes[1][0]
-    stats.probplot(df_filtered['OLS_RESID'], dist='norm', plot=c)
-    c.get_lines()[0].set_color(MIGROS_TEAL); c.get_lines()[0].set_markeredgecolor('white')
-    c.get_lines()[1].set_color(MIGROS_ORANGE)
-    c.set_title('OLS Residuals — Normal Q-Q')
+    (qq_x, qq_y), (qq_s, qq_i, _) = stats.probplot(df_filtered['OLS_RESID'].dropna(), dist='norm')
+    fig.add_trace(go.Scatter(x=qq_x, y=qq_y, mode='markers',
+                             marker=dict(color=MIGROS_TEAL, size=8, opacity=0.85,
+                                         line=dict(color='white', width=0.5)),
+                             hovertemplate='Theoretical %{x:.2f}<br>Sample %{y:.2f}<extra></extra>'), 2, 1)
+    fig.add_trace(go.Scatter(x=qq_x, y=qq_s * qq_x + qq_i, mode='lines',
+                             line=dict(color=MIGROS_ORANGE, width=1.6), hoverinfo='skip'), 2, 1)
 
-    d = axes[1][1]
     mx = max(df_filtered['STORE_COUNT'].max(), df_filtered['ML_CV_PRED'].max()) + 0.5
-    d.plot([0, mx], [0, mx], color='#555', ls='--', lw=1.2, label='Perfect')
-    d.scatter(df_filtered['STORE_COUNT'], df_filtered['ML_CV_PRED'],
-              color=MIGROS_ORANGE, s=60, alpha=0.85, edgecolors='white', lw=0.6)
-    d.set_xlabel('Actual stores'); d.set_ylabel('ML cross-validated prediction')
-    d.set_title('ML — Actual vs Out-of-Sample Prediction'); d.legend(fontsize=8)
+    fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode='lines', hoverinfo='skip',
+                             line=dict(color='rgba(148,163,184,0.4)', dash='dash', width=1.3)), 2, 2)
+    fig.add_trace(go.Scatter(x=df_filtered['STORE_COUNT'], y=df_filtered['ML_CV_PRED'],
+                             mode='markers', customdata=names, hovertemplate=_pt,
+                             marker=dict(color=MIGROS_ORANGE, size=9, opacity=0.9,
+                                         line=dict(color='white', width=0.6))), 2, 2)
 
-    plt.tight_layout(pad=1.6)
-    st.pyplot(fig)
-    plt.close()
+    fig.update_layout(showlegend=False, height=760, title='Residual Diagnostics')
+    fig.update_annotations(font=dict(family='Sora, sans-serif', size=13.5, color=TEXT_LIGHT))
+    for r, c, xt, yt in [(1, 1, 'OLS fitted', 'Residual'), (1, 2, 'ML fitted', 'Residual'),
+                         (2, 1, 'Theoretical quantiles', 'Sample quantiles'),
+                         (2, 2, 'Actual stores', 'CV prediction')]:
+        fig.update_xaxes(title_text=xt, row=r, col=c)
+        fig.update_yaxes(title_text=yt, row=r, col=c)
+    show_chart(fig)
 
     with st.expander("📋 View full OLS regression summary"):
         st.code(diag['ols_summary'], language='text')
@@ -1422,17 +1473,37 @@ elif page == "📡  Catchment & Overlap":
     """, unsafe_allow_html=True)
 
     # Charts: nearest-distance distribution + saturation by brand
-    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
-    axes[0].hist(cat['NEAREST_KM'].dropna(), bins=18, color=MIGROS_TEAL, edgecolor=BG_DARK)
-    axes[0].set_xlabel('Distance to nearest other store (km)')
-    axes[0].set_ylabel('Stores'); axes[0].set_title('Isolation of Existing Stores')
-    by_brand = cat.groupby('brand_category')['SATURATION'].mean().sort_values(ascending=False)
-    axes[1].bar(by_brand.index, by_brand.values, color=MIGROS_ORANGE, edgecolor='none')
-    axes[1].set_ylabel('Mean saturation index'); axes[1].set_title('Average Saturation by Brand')
-    axes[1].tick_params(axis='x', rotation=20)
-    plt.tight_layout(pad=1.4)
-    st.pyplot(fig)
-    plt.close()
+    c1, c2 = st.columns(2)
+    with c1:
+        fig = go.Figure(go.Histogram(
+            x=cat['NEAREST_KM'].dropna(), nbinsx=18,
+            marker=dict(color='rgba(79,179,232,0.75)',
+                        line=dict(color=BG_DARK, width=1)),
+            hovertemplate='%{x} km<br>%{y} stores<extra></extra>'))
+        med = cat['NEAREST_KM'].median()
+        fig.add_vline(x=med, line=dict(color=MIGROS_ORANGE, dash='dash', width=1.5),
+                      annotation_text=f' median {med:.2f} km',
+                      annotation_font=dict(size=11, color=MIGROS_ORANGE))
+        fig.update_layout(title='Isolation of Existing Stores', bargap=0.06,
+                          xaxis=dict(title='Distance to nearest other store (km)'),
+                          yaxis=dict(title='Stores'))
+        show_chart(fig, height=380)
+    with c2:
+        by_brand = cat.groupby('brand_category')['SATURATION'].mean().sort_values(ascending=False)
+        brand_cols = {'Migros': MIGROS_ORANGE, 'Coop': ACCENT_GOLD, 'Denner': ACCENT_RED,
+                      'Aldi': MIGROS_TEAL, 'Lidl': ACCENT_GREEN}
+        fig = go.Figure(go.Bar(
+            x=by_brand.index, y=by_brand.values,
+            marker=dict(cornerradius=6,
+                        color=[brand_cols.get(b, '#9CA3AF') for b in by_brand.index]),
+            text=[f"{v:.1f}" for v in by_brand.values], textposition='outside',
+            textfont=dict(size=11.5, color=TEXT_MUTED),
+            hovertemplate='<b>%{x}</b><br>Mean saturation %{y:.2f}<extra></extra>'))
+        fig.update_layout(title='Average Saturation by Brand', bargap=0.45,
+                          yaxis=dict(title='Mean saturation index',
+                                     range=[0, by_brand.max() * 1.18]),
+                          xaxis=dict(title=None))
+        show_chart(fig, height=380)
 
     # Map: stores coloured by saturation + catchment rings for Migros
     with st.spinner("Rendering catchment map…"):
@@ -1587,12 +1658,10 @@ elif page == "📋  Demographic Dashboard":
 
     # ── Filters ────────────────────────────────────────────────
     st.markdown(f'<div class="filter-panel"><div class="filter-title">⚙ Filters</div>', unsafe_allow_html=True)
-    dc1, dc2, dc3 = st.columns(3)
+    dc1, dc2 = st.columns(2)
     with dc1:
-        exclude_outliers = st.checkbox("Exclude outliers (Cook's D)", value=False)
-    with dc2:
         min_pop_demo = st.slider("Min Population", 0, 20000, 0, step=1000)
-    with dc3:
+    with dc2:
         highlight_top = st.selectbox("Highlight Commune", ["Champion Only"] + list(df_filtered['COMMUNE_NAME'].sort_values()))
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1604,61 +1673,74 @@ elif page == "📋  Demographic Dashboard":
     highlight_name = champ_name if highlight_top == "Champion Only" else highlight_top
 
     panels = [
-        ('POPULATION',                       '#4ECDC4', 'Population vs Supermarket Count',     'Resident Population'),
-        ('PCT_WORKING_AGE',                  '#45B7D1', 'Working-Age Share vs Supermarkets',   'Working-Age (%)'),
-        ('PCT_SINGLE_FAMILY',                '#96CEB4', 'Single-Family Housing vs Supermarkets','Single-Family (%)'),
-        ('PCT_FOREIGNERS',                   '#DDA0DD', 'Foreign-Resident Share vs Supermarkets','Foreign Residents (%)'),
-        ('proxy_purchasing_power_median_chf','#FFB347', 'Purchasing Power vs Supermarkets',    'Median Income (CHF)'),
+        ('POPULATION',                        MIGROS_TEAL,   'Population',            'Resident population', '~s'),
+        ('proxy_purchasing_power_median_chf', ACCENT_GOLD,   'Purchasing Power',      'Median income (CHF)', '~s'),
+        ('PCT_FOREIGNERS',                    ACCENT_PURPLE, 'Foreign Residents',     'Foreign residents (%)', '.0f'),
+        ('PCT_WORKING_AGE',                   ACCENT_GREEN,  'Working-Age Share',     'Working-age (%)', '.0f'),
+        ('PCT_SINGLE_FAMILY',                 ACCENT_RED,    'Single-Family Housing', 'Single-family (%)', '.0f'),
+        ('POP_DENSITY',                       '#60A5FA',     'Population Density',    'People per km²', '~s'),
     ]
 
-    fig, axes = plt.subplots(3, 2, figsize=(16, 18))
-    fig.suptitle('Geneva Retail Analytics  —  5-Factor Socio-Demographic Dashboard', fontsize=14, y=1.01)
-    positions = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0)]
+    def factor_panel(xcol, color, title, xlab, tickfmt):
+        d = df_demo.dropna(subset=[xcol])
+        fig = go.Figure()
+        # OLS trendline
+        if len(d) > 2 and d[xcol].nunique() > 1:
+            k, b0 = np.polyfit(d[xcol], d['STORE_COUNT'], 1)
+            xs = np.linspace(d[xcol].min(), d[xcol].max(), 50)
+            fig.add_trace(go.Scatter(x=xs, y=k * xs + b0, mode='lines', hoverinfo='skip',
+                                     line=dict(color='rgba(255,107,0,0.85)', width=2)))
+        fig.add_trace(go.Scatter(
+            x=d[xcol], y=d['STORE_COUNT'], mode='markers', customdata=d['COMMUNE_NAME'],
+            marker=dict(color=color, size=10, opacity=0.78,
+                        line=dict(color='white', width=0.6)),
+            hovertemplate='<b>%{customdata}</b><br>' + xlab + ' %{x:,.1f}<br>'
+                          'Stores %{y:.0f}<extra></extra>'))
+        h = d[d['COMMUNE_NAME'] == highlight_name]
+        if not h.empty:
+            fig.add_trace(go.Scatter(
+                x=h[xcol], y=h['STORE_COUNT'], mode='markers', customdata=h['COMMUNE_NAME'],
+                marker=dict(color=MIGROS_ORANGE, size=20, symbol='star',
+                            line=dict(color='white', width=1.4)),
+                hovertemplate='<b>★ %{customdata}</b><br>' + xlab + ' %{x:,.1f}<br>'
+                              'Stores %{y:.0f}<extra></extra>'))
+        fig.update_layout(title=title, showlegend=False,
+                          xaxis=dict(title=xlab, tickformat=tickfmt),
+                          yaxis=dict(title='Supermarkets'))
+        return fig
 
-    for (r, c), (xcol, color, title, xlab) in zip(positions, panels):
-        ax = axes[r][c]
-        sns.regplot(ax=ax, x=xcol, y='STORE_COUNT', data=df_demo, color=color,
-                    scatter_kws={'alpha': 0.65, 's': 45, 'zorder': 3},
-                    line_kws={'color': MIGROS_ORANGE, 'lw': 2.2, 'zorder': 2})
-        h_row = df_demo[df_demo['COMMUNE_NAME'] == highlight_name]
-        if not h_row.empty:
-            ax.scatter(h_row[xcol], h_row['STORE_COUNT'],
-                       color=MIGROS_ORANGE, s=220, zorder=10, edgecolors='white', lw=1.5,
-                       marker='*', label=f'★ {highlight_name}')
-            ax.legend(fontsize=8)
-        ax.set_title(title)
-        ax.set_xlabel(xlab, fontsize=9)
-        ax.set_ylabel('Number of Supermarkets', fontsize=9)
+    for i in range(0, len(panels), 2):
+        cols = st.columns(2)
+        for col, panel in zip(cols, panels[i:i+2]):
+            with col:
+                show_chart(factor_panel(*panel), height=360)
 
-    ax_box = axes[2][1]
-    ax_box.set_facecolor(BG_DARK)
-    ax_box.axis('off')
-    for sp in ax_box.spines.values():
-        sp.set_visible(True)
-        sp.set_color(MIGROS_ORANGE)
-        sp.set_linewidth(1)
-
+    # Highlight summary card
     h_data = df_demo[df_demo['COMMUNE_NAME'] == highlight_name]
     if not h_data.empty:
         h = h_data.iloc[0]
-        entries = [
-            ('HIGHLIGHTED',   highlight_name,                                              MIGROS_ORANGE, 14, 'bold'),
-            ('Population',    f"{int(h['POPULATION']):,}",                                TEXT_LIGHT,    11, 'normal'),
-            ('Stores',        f"{int(h['STORE_COUNT'])}",                                 TEXT_LIGHT,    11, 'normal'),
-            ('Predicted',     f"{h['PREDICTED_STORES']:.2f}",                             TEXT_LIGHT,    11, 'normal'),
-            ('Opportunity',   f"+{h['OPPORTUNITY_SCORE']:.2f}",                           MIGROS_ORANGE, 13, 'bold'),
-            ('Income (CHF)',  f"{int(h['proxy_purchasing_power_median_chf']):,}",          TEXT_LIGHT,    11, 'normal'),
-            ('Foreign %',     f"{h['PCT_FOREIGNERS']:.1f}%",                              MIGROS_TEAL,   11, 'normal'),
-        ]
-        y_pos = 0.90
-        for lbl, val, col, sz, wt in entries:
-            ax_box.text(0.07, y_pos, f'{lbl}:', fontsize=9, color=TEXT_MUTED, transform=ax_box.transAxes, va='top')
-            ax_box.text(0.55, y_pos, val, fontsize=sz, color=col, fontweight=wt, transform=ax_box.transAxes, va='top')
-            y_pos -= 0.12
-
-    plt.tight_layout(pad=1.8)
-    st.pyplot(fig)
-    plt.close()
+        stats_html = ""
+        for lbl, val, col in [
+            ('Population',  f"{int(h['POPULATION']):,}",                          TEXT_LIGHT),
+            ('Stores',      f"{int(h['STORE_COUNT'])}",                           TEXT_LIGHT),
+            ('OLS Pred',    f"{h['PREDICTED_STORES']:.2f}",                       MIGROS_TEAL),
+            ('Gap',         f"{h['OPPORTUNITY_SCORE']:+.2f}",                     MIGROS_ORANGE),
+            ('Income CHF',  f"{int(h['proxy_purchasing_power_median_chf']):,}",    TEXT_LIGHT),
+            ('Foreign %',   f"{h['PCT_FOREIGNERS']:.1f}%",                        ACCENT_PURPLE),
+        ]:
+            stats_html += f"""
+            <div class="champion-stat">
+              <div class="champion-stat-label">{lbl}</div>
+              <div class="champion-stat-value" style="color:{col};font-size:17px;">{val}</div>
+            </div>"""
+        st.markdown(f"""
+        <div style="background:{CARD_BG};border:1px solid rgba(255,107,0,0.35);border-radius:16px;
+             padding:24px;margin-top:6px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:{ORANGE_LIGHT};
+               letter-spacing:2.5px;text-transform:uppercase;margin-bottom:14px;">★ Highlighted — {highlight_name}</div>
+          <div class="champion-stats" style="justify-content:flex-start;">{stats_html}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════
