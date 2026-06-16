@@ -25,7 +25,7 @@ st.set_page_config(
     page_title="Migros · Location Intelligence",
     page_icon="◆",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ──────────────────────────────────────────────────────────────────────
@@ -851,55 +851,116 @@ PLOT_CFG = {"displayModeBar": False}
 
 
 # ──────────────────────────────────────────────────────────────────────
-# SIDEBAR
+# NAVIGATION — hamburger popover (opens/closes; works on every screen size)
 # ──────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(
-        f"""
-    <div class="brand">
-      <div class="brand-row">
-        <div class="brand-logo">M</div>
-        <div class="brand-text">
-          <div class="name">Migros Group</div>
-          <div class="sub">Location Intelligence</div>
+st.markdown(
+    f"""
+<style>
+/* Hamburger trigger button */
+[data-testid="stPopover"] button {{
+    background: linear-gradient(135deg, rgba(124,107,248,0.30), rgba(34,211,238,0.18)) !important;
+    border: 1px solid rgba(124,107,248,0.55) !important;
+    border-radius: 12px !important;
+    color: {TEXT} !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 600 !important; letter-spacing: 2px !important;
+    box-shadow: 0 6px 18px rgba(124,107,248,0.28) !important;
+    transition: transform .18s ease, box-shadow .18s ease !important;
+}}
+[data-testid="stPopover"] button:hover {{
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 28px rgba(124,107,248,0.45) !important;
+}}
+/* Popover panel */
+[data-testid="stPopoverBody"] {{
+    background: linear-gradient(180deg, #0C0E1A 0%, #080A14 100%) !important;
+    border: 1px solid {BORDER} !important; border-radius: 16px !important;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55) !important;
+    min-width: 290px !important;
+}}
+/* Nav radio inside popover */
+[data-testid="stPopoverBody"] [role="radiogroup"] {{ gap: 4px; }}
+[data-testid="stPopoverBody"] [role="radiogroup"] label {{
+    width: 100%; padding: 11px 14px !important; margin: 0 !important;
+    border-radius: 11px; border: 1px solid transparent;
+    cursor: pointer; font-size: 13.5px; font-weight: 500;
+    color: {MUTED}; transition: all 0.18s cubic-bezier(.4,0,.2,1);
+    position: relative; overflow: hidden;
+}}
+[data-testid="stPopoverBody"] [role="radiogroup"] label:hover {{
+    background: {SURF_2}; color: {TEXT}; transform: translateX(3px);
+}}
+[data-testid="stPopoverBody"] [role="radiogroup"] label:has(input:checked) {{
+    background: linear-gradient(135deg, rgba(124,107,248,0.18) 0%, rgba(34,211,238,0.10) 100%);
+    border-color: rgba(124,107,248,0.45);
+    color: {TEXT}; font-weight: 600;
+    box-shadow: 0 4px 18px rgba(124,107,248,0.18);
+}}
+[data-testid="stPopoverBody"] [role="radiogroup"] label:has(input:checked)::before {{
+    content: ''; position: absolute; left: 0; top: 18%; bottom: 18%;
+    width: 3px; border-radius: 3px; background: {GRAD};
+}}
+[data-testid="stPopoverBody"] [role="radiogroup"] label > div:first-child {{ display: none; }}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+NAV = [
+    "◆   Executive Summary",
+    "◇   Population Pool",
+    "▣   Composite Scoring",
+    "◈   Regression Model",
+    "⬡   Demographic Atlas",
+    "◉   Geographic Map",
+]
+if "nav_page" not in st.session_state:
+    st.session_state.nav_page = NAV[0]
+
+_now_label = st.session_state.nav_page.split("   ", 1)[-1]
+menu_col, title_col = st.columns([1.15, 4], gap="small")
+with menu_col:
+    with st.popover(f"☰   MENU", use_container_width=True):
+        st.markdown(
+            f"""
+        <div class="brand" style="border:none;padding:6px 4px 18px;">
+          <div class="brand-row">
+            <div class="brand-logo">M</div>
+            <div class="brand-text">
+              <div class="name">Migros Group</div>
+              <div class="sub">Location Intelligence</div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="brand-meta">
-        <div class="bm-cell"><div class="l">Brief</div><div class="v">N° 01</div></div>
-        <div class="bm-cell"><div class="l">FY</div><div class="v">2022</div></div>
-        <div class="bm-cell"><div class="l">Canton</div><div class="v">Geneva · CH</div></div>
-        <div class="bm-cell"><div class="l">Build</div><div class="v">v 2.0</div></div>
-      </div>
-    </div>
-    <div class="nav-label">Briefing</div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    page = st.radio(
-        "nav",
-        [
-            "◆   Executive Summary",
-            "◇   Population Pool",
-            "▣   Composite Scoring",
-            "◈   Regression Model",
-            "⬡   Demographic Atlas",
-            "◉   Geographic Map",
-        ],
-        label_visibility="collapsed",
-    )
-
+        <div class="nav-label" style="padding:4px 6px 8px;">Briefing</div>
+        """,
+            unsafe_allow_html=True,
+        )
+        st.radio("nav", NAV, label_visibility="collapsed", key="nav_page")
+        st.markdown(
+            f"""
+        <div class="side-foot" style="margin:14px 4px 4px;">
+          <div class="row gold"><span>Status</span><span><span class="status-pulse"></span>Live</span></div>
+          <div class="row"><span>Data</span><span>OCS · OFS</span></div>
+          <div class="row"><span>Model</span><span>OLS · CookD</span></div>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+with title_col:
     st.markdown(
         f"""
-    <div class="side-foot">
-      <div class="row gold"><span>Status</span><span><span class="status-pulse"></span>Live</span></div>
-      <div class="row"><span>Data</span><span>OCS · OFS</span></div>
-      <div class="row"><span>Stores</span><span>OSM</span></div>
-      <div class="row"><span>Model</span><span>OLS · CookD</span></div>
+    <div style="display:flex;align-items:center;height:100%;padding-left:6px;
+         font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;
+         color:{MUTED};text-transform:uppercase;">
+      <span style="background:{GRAD};-webkit-background-clip:text;background-clip:text;
+            -webkit-text-fill-color:transparent;font-weight:700;">{_now_label}</span>
     </div>
     """,
         unsafe_allow_html=True,
     )
+
+page = st.session_state.nav_page
 
 # ──────────────────────────────────────────────────────────────────────
 # LOAD
