@@ -93,7 +93,29 @@ html, body, [class*="css"] {{
     background-attachment: fixed;
 }}
 .block-container {{ padding: 1.4rem 2.6rem 5rem; max-width: 1520px; }}
-#MainMenu, footer, header[data-testid="stHeader"] {{ visibility: hidden; }}
+#MainMenu, footer {{ visibility: hidden; }}
+/* Keep the header (it hosts the mobile sidebar toggle) but make it blend in */
+header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
+header[data-testid="stHeader"] [data-testid="stToolbar"] {{ display: none; }}
+/* Sidebar open/close control — must stay visible & tappable, esp. on mobile */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {{
+    visibility: visible !important; display: flex !important;
+    top: 12px; left: 12px; z-index: 1000;
+}}
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="collapsedControl"] svg {{
+    color: {TEXT} !important; fill: {TEXT} !important;
+}}
+[data-testid="stSidebarCollapsedControl"] button {{
+    background: linear-gradient(135deg, rgba(124,107,248,0.25), rgba(34,211,238,0.15)) !important;
+    border: 1px solid rgba(124,107,248,0.5) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 16px rgba(124,107,248,0.3) !important;
+}}
 
 /* ── ANIMATIONS ────────────────────────────────────────── */
 @keyframes fadeUp {{
